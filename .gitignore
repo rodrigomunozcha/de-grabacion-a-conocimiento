@@ -1,0 +1,33 @@
+# Entorno de Python
+__pycache__/
+*.pyc
+
+# Configuracion personal (rutas propias de este Mac). Ver orquestador/config.example.json
+orquestador/config.json
+
+# Contenido real: grabaciones, notas generadas y audios ya archivados
+/Input/
+/Output/
+/Procesados/
+
+# Dependencias de Node (se reinstalan con npm install)
+node_modules/
+
+# Estado de ejecucion y logs, no es codigo (algunos contienen fragmentos reales de transcripciones)
+orquestador/logs/
+orquestador/transcripciones_pendientes/
+orquestador/estado_tamanos.json
+orquestador/trabajos_emitidos.json
+orquestador/orquestador.lock
+Estado.txt
+
+# Configuracion local de Claude Code (permisos y rutas propias de este Mac)
+.claude/settings.local.json
+
+# Apps compiladas: se generan en cada Mac con boton_app/compilar_apps.sh.
+# No se suben para que macOS no las ponga en cuarentena al descargarlas, y para
+# que lo que se publica sea el codigo fuente auditable (.applescript), no un binario.
+boton_app/*.app/
+
+# macOS
+.DS_Store

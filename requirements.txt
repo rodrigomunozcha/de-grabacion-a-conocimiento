@@ -1,0 +1,4 @@
+anyio>=4.12.1
+claude-agent-sdk>=0.2.128
+python-docx>=1.2.0
+requests>=2.32.5
