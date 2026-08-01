@@ -35,10 +35,10 @@ from claude_agent_sdk import (
     query,
 )
 
+from .config import dir_pendientes
 from .skill_runner import CLI_PATH, PROJECT_ROOT, construir_gate_de_rutas
 from .uso import registrar_uso
 
-PENDIENTES_DIR = Path(__file__).parent / "transcripciones_pendientes"
 
 MARCADOR_REVISION = "RESULTADO_REVISION:"
 
@@ -143,8 +143,8 @@ def hallazgos_graves(revision: dict) -> list[dict]:
 
 
 def _guardar_revision(slug: str, revision: dict) -> Path:
-    PENDIENTES_DIR.mkdir(parents=True, exist_ok=True)
-    ruta = PENDIENTES_DIR / f"{slug}_revision.json"
+    dir_pendientes().mkdir(parents=True, exist_ok=True)
+    ruta = dir_pendientes() / f"{slug}_revision.json"
     ruta.write_text(json.dumps(revision, indent=2, ensure_ascii=False), encoding="utf-8")
     return ruta
 

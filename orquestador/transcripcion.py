@@ -19,13 +19,12 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from .config import cargar_config
+from .config import cargar_config, dir_pendientes
 from .deteccion import construir_trabajos, marcar_emitido
 from .dialogo_no_reconocido import preguntar_que_hacer
 from .nombres import calcular_numero_clase_por_orden, slug_pendiente
 from .notificaciones import notificar_error, notificar_progreso
 
-PENDIENTES_DIR = Path(__file__).parent / "transcripciones_pendientes"
 PERFIL_WHISPER_POR_DEFECTO = "es-chile"
 
 
@@ -54,15 +53,15 @@ def transcribir_trabajo(trabajo: dict, config: dict) -> str:
 
 
 def _guardar_pendiente(trabajo: dict, texto: str) -> None:
-    PENDIENTES_DIR.mkdir(parents=True, exist_ok=True)
+    dir_pendientes().mkdir(parents=True, exist_ok=True)
     slug = slug_pendiente(trabajo["clave"])
-    ruta_txt = PENDIENTES_DIR / f"{slug}.txt"
+    ruta_txt = dir_pendientes() / f"{slug}.txt"
     ruta_txt.write_text(texto, encoding="utf-8")
     metadata = dict(trabajo)
     metadata["archivos_originales"] = metadata.pop("archivos")
     metadata["archivo_texto"] = str(ruta_txt)
     metadata["slug"] = slug
-    (PENDIENTES_DIR / f"{slug}.json").write_text(
+    (dir_pendientes() / f"{slug}.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 

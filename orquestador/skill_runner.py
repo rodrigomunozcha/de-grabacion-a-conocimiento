@@ -34,11 +34,11 @@ from claude_agent_sdk import (
     query,
 )
 
+from .config import dir_pendientes
 from .uso import registrar_uso
 
 PROJECT_ROOT = Path(__file__).parent.parent
 CLI_PATH = PROJECT_ROOT / "node_modules" / ".bin" / "claude"
-PENDIENTES_DIR = Path(__file__).parent / "transcripciones_pendientes"
 
 MARCADOR_RESULTADO = "RESULTADO_ORQUESTADOR:"
 
@@ -144,8 +144,8 @@ def _parsear_resultado(texto: str) -> dict | None:
 
 
 def _guardar_resultado_skill(slug: str, resultado: dict | None) -> Path:
-    PENDIENTES_DIR.mkdir(parents=True, exist_ok=True)
-    ruta = PENDIENTES_DIR / f"{slug}_skill.json"
+    dir_pendientes().mkdir(parents=True, exist_ok=True)
+    ruta = dir_pendientes() / f"{slug}_skill.json"
     ruta.write_text(json.dumps(resultado, indent=2, ensure_ascii=False), encoding="utf-8")
     return ruta
 

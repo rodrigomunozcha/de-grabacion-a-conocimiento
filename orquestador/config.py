@@ -3,6 +3,28 @@ from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 
+# Carpeta de los archivos intermedios entre etapas (<slug>.txt, <slug>.json,
+# <slug>_skill.json, <slug>_revision.json).
+#
+# Se resuelve por funcion y no como constante en cada modulo porque el modo
+# ensayo la redirige a un sandbox (ver ensayo.py). Sin eso, un ensayo dejaba
+# un <slug>_skill.json en la carpeta real, y ese archivo es justo la marca de
+# "esta clase ya se proceso": la siguiente corrida de verdad se habria saltado
+# la clase en silencio, sin notas y sin error.
+PENDIENTES_DIR_POR_DEFECTO = Path(__file__).parent / "transcripciones_pendientes"
+
+_dir_pendientes = PENDIENTES_DIR_POR_DEFECTO
+
+
+def dir_pendientes() -> Path:
+    return _dir_pendientes
+
+
+def usar_dir_pendientes(ruta: Path | str | None) -> None:
+    """Redirige la carpeta de intermedios. Con None vuelve a la real."""
+    global _dir_pendientes
+    _dir_pendientes = Path(ruta) if ruta else PENDIENTES_DIR_POR_DEFECTO
+
 PERFILES_WHISPER_VALIDOS = ["es-chile", "es-spain", "es-neutro", "en", "acento-mixto"]
 
 # Etiquetas legibles para mostrar en el dialogo nativo (ver dialogo_no_reconocido.py)

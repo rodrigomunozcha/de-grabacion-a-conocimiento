@@ -22,15 +22,15 @@ from pathlib import Path
 from . import anki_connect
 from .archivado import archivar_audio
 from .carpetas import resolver_carpeta_ramo
-from .config import cargar_config, guardar_config
+from .config import cargar_config, dir_pendientes, guardar_config
 from .docx_generator import generar_docx
+from .ensayo import es_ensayo
 from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
 from .revisor import hallazgos_graves, revisar
 from .skill_runner import aplicar_skill, corregir_con_revision
 
-PENDIENTES_DIR = Path(__file__).parent / "transcripciones_pendientes"
 
 
 def _leer_nota(ruta: str | None, vault_dir: str) -> str:
@@ -55,10 +55,10 @@ def _leer_nota(ruta: str | None, vault_dir: str) -> str:
 
 
 def _listar_metadatas_pendientes() -> list[Path]:
-    if not PENDIENTES_DIR.exists():
+    if not dir_pendientes().exists():
         return []
     return sorted(
-        p for p in PENDIENTES_DIR.glob("*.json") if not p.stem.endswith("_skill")
+        p for p in dir_pendientes().glob("*.json") if not p.stem.endswith("_skill")
     )
 
 
@@ -125,7 +125,9 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
     # buscarla es comparar nombres, no requiere criterio, y hacerlo dentro de la
     # skill obligaba a listar el vault entero en cada clase (ver carpetas.py).
     carpeta_ramo, config_cambio = resolver_carpeta_ramo(ramo, vault_dir, config)
-    if config_cambio:
+    # En un ensayo el cache apunta al vault de mentira: guardarlo envenenaria
+    # la configuracion real para la proxima clase de verdad.
+    if config_cambio and not es_ensayo(config):
         guardar_config(config)
 
     notificar_progreso("Analizando con la skill", f"{ramo} - puede tardar unos minutos")
@@ -159,7 +161,11 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
         )
 
     tarjetas = extraer_preguntas_respuestas(texto_aprendizaje)
-    if tarjetas:
+    if tarjetas and es_ensayo(config):
+        # Anki no tiene deshacer comodo ni mazos desechables: en un ensayo no
+        # se toca, solo se informa cuantas tarjetas habrian entrado.
+        notificar_progreso("Ensayo: Anki no se toca", f"{len(tarjetas)} tarjetas se habrian agregado")
+    elif tarjetas:
         if anki_connect.verificar_conexion():
             notificar_progreso("Agregando a Anki", f"{len(tarjetas)} tarjetas")
             anki_connect.crear_mazo_si_no_existe(ramo)
@@ -184,7 +190,7 @@ async def procesar_pendientes_reconocidos(config: dict | None = None) -> list[Pa
         trabajo_metadata = json.loads(ruta_metadata.read_text(encoding="utf-8"))
         if not trabajo_metadata.get("reconocido"):
             continue
-        ruta_skill_json = PENDIENTES_DIR / f"{_slug_de(trabajo_metadata)}_skill.json"
+        ruta_skill_json = dir_pendientes() / f"{_slug_de(trabajo_metadata)}_skill.json"
         if ruta_skill_json.exists():
             continue  # ya se proceso antes
 

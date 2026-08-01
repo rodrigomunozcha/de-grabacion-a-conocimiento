@@ -24,11 +24,11 @@ from pathlib import Path
 import anyio
 
 from . import lock
-from .config import PERFILES_WHISPER_VALIDOS, cargar_config
+from .config import PERFILES_WHISPER_VALIDOS, cargar_config, dir_pendientes
 from .deteccion import NOMBRES_DIA
 from .finalizar_clase import procesar_clase_reconocida
 from .nombres import calcular_numero_clase_por_orden, slug_pendiente
-from .transcripcion import PENDIENTES_DIR, _guardar_pendiente, transcribir_trabajo
+from .transcripcion import _guardar_pendiente, transcribir_trabajo
 
 PERFIL_WHISPER_POR_DEFECTO = "es-chile"
 
@@ -75,7 +75,7 @@ async def procesar_grabacion_manual(
         slug = slug_pendiente(trabajo["clave"])
         trabajo_metadata = dict(trabajo)
         trabajo_metadata["archivos_originales"] = trabajo_metadata.pop("archivos")
-        trabajo_metadata["archivo_texto"] = str(PENDIENTES_DIR / f"{slug}.txt")
+        trabajo_metadata["archivo_texto"] = str(dir_pendientes() / f"{slug}.txt")
         trabajo_metadata["slug"] = slug
 
         return await procesar_clase_reconocida(trabajo_metadata, config)
