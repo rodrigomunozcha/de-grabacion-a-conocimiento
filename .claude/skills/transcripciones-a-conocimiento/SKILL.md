@@ -128,6 +128,12 @@ de ponerse a prueba es de él, no algo que la skill le exija.
    el estudiante las mueva o conecte su vault. Plantillas exactas en
    `references/formato-obsidian.md`.
 
+   **En invocación automatizada, la carpeta viene resuelta en el prompt.** Ya existe y ya
+   es la correcta. Escribe ahí directamente: no la busques, no explores el vault y no
+   listes carpetas para confirmarla. Recorrer un vault grande cuesta caro y no aporta
+   nada cuando la ruta ya te la dieron. Si quieres enlazar notas anteriores del ramo,
+   mira solo dentro de esa carpeta.
+
    **En invocación automatizada, al terminar todo el proceso**, agrega dos cosas más
    al trabajo normal:
 

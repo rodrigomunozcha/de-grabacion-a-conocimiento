@@ -31,5 +31,6 @@
       "perfil_whisper": "es-chile"
     }
   },
-  "ramos_adicionales": {}
+  "ramos_adicionales": {},
+  "carpetas_ramo": {}
 }

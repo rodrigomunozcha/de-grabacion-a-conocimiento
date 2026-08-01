@@ -21,12 +21,14 @@ from pathlib import Path
 
 from . import anki_connect
 from .archivado import archivar_audio
-from .config import cargar_config
+from .carpetas import resolver_carpeta_ramo
+from .config import cargar_config, guardar_config
 from .docx_generator import generar_docx
 from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
-from .skill_runner import aplicar_skill
+from .revisor import hallazgos_graves, revisar
+from .skill_runner import aplicar_skill, corregir_con_revision
 
 PENDIENTES_DIR = Path(__file__).parent / "transcripciones_pendientes"
 
@@ -66,14 +68,75 @@ def _slug_de(trabajo_metadata: dict) -> str:
     return trabajo_metadata.get("slug") or trabajo_metadata["fecha"]
 
 
+async def _revisar_y_corregir(
+    ruta_texto: str, resultado_skill: dict, ramo: str, vault_dir: str, slug: str
+) -> dict:
+    """
+    Etapa 5: un revisor independiente compara las notas contra la transcripcion
+    cruda, y si encontro algo grave, la sesion que las escribio las corrige.
+    Ver revisor.py para por que la revision es una corrida aparte.
+
+    La correccion solo se dispara con hallazgos de gravedad alta (contenido que
+    la transcripcion no respalda). Los de gravedad media quedan anotados en
+    <slug>_revision.json y no gastan una pasada mas: un revisor al que se le
+    pide encontrar algo siempre encuentra algo, y corregir por cada detalle
+    duplicaria el costo de cada clase para cambiar comas.
+
+    Toda esta etapa es opcional por diseño. Si falla, se sigue con lo que
+    escribio la skill: las notas ya estan en el vault y son utiles. Que la
+    revision se caiga no puede costarle la clase al estudiante.
+    """
+    try:
+        revision = await revisar(ruta_texto, resultado_skill, ramo, vault_dir, slug)
+    except Exception as e:
+        notificar_aviso(
+            "La revision no corrio",
+            f"{ramo}: {type(e).__name__}. Las notas quedaron como las escribio la skill, "
+            "sin revisar.",
+        )
+        return resultado_skill
+
+    graves = hallazgos_graves(revision)
+    if revision.get("veredicto") != "corregir" or not graves:
+        return resultado_skill
+
+    notificar_progreso(
+        "Corrigiendo tras la revision",
+        f"{len(graves)} hallazgo(s) de gravedad alta",
+    )
+    try:
+        return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
+    except Exception as e:
+        notificar_aviso(
+            "La correccion no se pudo aplicar",
+            f"{ramo}: {type(e).__name__}. Revisa los hallazgos en "
+            f"{slug}_revision.json y corrige a mano lo que corresponda.",
+        )
+        return resultado_skill
+
+
 async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Path:
     ruta_texto = trabajo_metadata["archivo_texto"]
     ramo = trabajo_metadata["ramo"]
     slug = _slug_de(trabajo_metadata)
     vault_dir = config["rutas"]["vault_obsidian"]
 
+    # La carpeta del ramo se resuelve aca, en Python, y se cachea en config.json:
+    # buscarla es comparar nombres, no requiere criterio, y hacerlo dentro de la
+    # skill obligaba a listar el vault entero en cada clase (ver carpetas.py).
+    carpeta_ramo, config_cambio = resolver_carpeta_ramo(ramo, vault_dir, config)
+    if config_cambio:
+        guardar_config(config)
+
     notificar_progreso("Analizando con la skill", f"{ramo} - puede tardar unos minutos")
-    resultado_skill = await aplicar_skill(ruta_texto, ramo, vault_dir, slug)
+    resultado_skill = await aplicar_skill(
+        ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
+    )
+
+    resultado_skill = await _revisar_y_corregir(
+        ruta_texto, resultado_skill, ramo, vault_dir, slug
+    )
+
     titulo = resultado_skill["titulo"]
     conceptos = resultado_skill["conceptos_repetidos"]
 

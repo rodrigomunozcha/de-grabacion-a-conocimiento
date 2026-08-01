@@ -8,10 +8,13 @@ nada más que soltar el audio y hacer un clic. Por cada clase que grabes, el sis
    ideas centrales explicadas desde cero, preguntas con respuesta modelo, sesión de
    estudio y kit de repaso. Todo queda guardado como notas conectadas en tu vault de
    Obsidian.
-3. Arma un `.docx` con diseño pensado para leer y estudiar.
-4. Archiva el audio original, ordenado por ramo y fecha.
-5. Agrega las preguntas y respuestas como flashcards en Anki.
-6. Te avisa con una notificación nativa de macOS cuando termina (o si algo falló).
+3. Revisa ese trabajo con un segundo agente independiente, que compara las notas contra
+   la transcripción cruda y busca contenido sin respaldo. Si encuentra algo grave, manda
+   a corregirlo antes de seguir.
+4. Arma un `.docx` con diseño pensado para leer y estudiar.
+5. Archiva el audio original, ordenado por ramo y fecha.
+6. Agrega las preguntas y respuestas como flashcards en Anki.
+7. Te avisa con una notificación nativa de macOS cuando termina (o si algo falló).
 
 Todo el uso del día a día pasa por dos apps de doble clic. Nunca necesitas abrir
 Terminal para usarlo, solo para instalarlo la primera vez.
@@ -138,6 +141,10 @@ cualquier archivo de texto.
   agrega las preguntas a mano desde la nota de aprendizaje (siguen ahí completas).
 - **Un error puntual en una clase:** revisa `orquestador/logs/errores.log` (o haz clic en
   la notificación de error, te lleva directo ahí).
+- **Moviste una carpeta de ramo dentro del vault:** no hay que hacer nada. El sistema
+  recuerda dónde está la carpeta de cada ramo (en `config.json`, bajo `carpetas_ramo`),
+  y si la ruta guardada ya no existe, la vuelve a buscar sola. Si un ramo todavía no
+  tiene carpeta, la crea al lado de las de los otros ramos.
 
 ## Estructura del proyecto
 
@@ -149,6 +156,9 @@ boton_app/           Las apps de doble clic (Procesar Clases, Configurar Sistema
 orquestador/         El código del pipeline
   config.json         Tu configuracion real (rutas, ramos). No se sube al repo.
   config.example.json Plantilla de referencia para armar tu propio config.json
+  revisor.py          El segundo agente que revisa las notas antes de archivarlas
+  carpetas.py         Ubica la carpeta de cada ramo en tu vault (y la recuerda)
+  logs/uso.jsonl      Cuanto consumio cada llamada al modelo
 .claude/skills/       La skill que aplica el método de estudio sobre cada transcripción
 ```
 
@@ -180,3 +190,31 @@ de shell, solo puede leer y escribir dentro de este proyecto y de tu vault de Ob
 tiene un tope de turnos para no consumir cuota sin control. Si cambias esa configuración
 (en `orquestador/skill_runner.py`), ten presente que quitar una herramienta de
 `allowed_tools` no basta para bloquearla: hace falta `disallowed_tools`.
+
+### La revisión
+
+Como nadie mira el material antes de que se convierta en flashcards, hay una segunda
+llamada que lo revisa (`orquestador/revisor.py`). Es una corrida aparte, no una
+autocrítica dentro de la misma sesión: llega sin haber escrito nada y compara las notas
+contra la transcripción cruda. Busca contenido inventado, reconstrucciones presentadas
+como textuales, huecos tapados y respuestas modelo que contradicen la clase. No corrige
+ni escribe: solo puede leer.
+
+Si encuentra algo de gravedad alta (contenido que la transcripción no respalda), se
+retoma la sesión original de la skill para que corrija sus propias notas. Los hallazgos
+de gravedad media quedan anotados en
+`orquestador/transcripciones_pendientes/<clase>_revision.json` y no disparan una
+corrección: siempre hay algo que mejorar, y corregir por cada detalle duplicaría el costo
+de cada clase.
+
+Toda esta etapa es opcional por diseño. Si la revisión falla, la clase se termina de
+procesar igual con lo que escribió la skill, y recibes un aviso de que quedó sin revisar.
+
+### Cuánto consume
+
+Cada llamada al modelo queda anotada en `orquestador/logs/uso.jsonl`. Para ver el
+promedio por etapa después de unas cuantas clases:
+
+```bash
+/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.uso
+```
