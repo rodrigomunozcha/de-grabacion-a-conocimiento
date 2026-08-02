@@ -142,6 +142,22 @@ def hallazgos_graves(revision: dict) -> list[dict]:
     return [h for h in revision.get("hallazgos", []) if h.get("gravedad") == "alta"]
 
 
+def hallazgos_para_avisar(revision: dict, se_corrigio: bool) -> list[dict]:
+    """
+    Los hallazgos que el estudiante tiene que ver, porque nadie los arreglo.
+
+    Existe porque el revisor era la etapa mas cara despues del destilado y su
+    resultado terminaba en un JSON que nadie abria: se pagaba por una revision
+    invisible. Los de gravedad alta se corrigen solos, asi que solo hace falta
+    avisar de los que quedaron en pie. Si la correccion no llego a aplicarse,
+    los graves tambien entran, porque entonces siguen ahi.
+    """
+    hallazgos = revision.get("hallazgos", [])
+    if se_corrigio:
+        return [h for h in hallazgos if h.get("gravedad") != "alta"]
+    return list(hallazgos)
+
+
 def _guardar_revision(slug: str, revision: dict) -> Path:
     dir_pendientes().mkdir(parents=True, exist_ok=True)
     ruta = dir_pendientes() / f"{slug}_revision.json"

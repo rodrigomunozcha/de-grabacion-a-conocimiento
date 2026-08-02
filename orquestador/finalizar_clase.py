@@ -31,7 +31,7 @@ from . import estado_vivo
 from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
-from .revisor import hallazgos_graves, revisar
+from .revisor import hallazgos_graves, hallazgos_para_avisar, revisar
 from .skill_runner import aplicar_skill, corregir_con_revision
 
 # Topes de tiempo por etapa. El tope de turnos no alcanza: una llamada al SDK
@@ -80,7 +80,7 @@ def _slug_de(trabajo_metadata: dict) -> str:
 
 async def _revisar_y_corregir(
     ruta_texto: str, resultado_skill: dict, ramo: str, vault_dir: str, slug: str
-) -> dict:
+) -> tuple[dict, list[dict]]:
     """
     Etapa 5: un revisor independiente compara las notas contra la transcripcion
     cruda, y si encontro algo grave, la sesion que las escribio las corrige.
@@ -106,18 +106,18 @@ async def _revisar_y_corregir(
             f"{ramo}: se corto para no dejar la clase colgada. Las notas quedaron "
             "como las escribio la skill, sin revisar.",
         )
-        return resultado_skill
+        return resultado_skill, []
     except Exception as e:
         notificar_aviso(
             "La revision no corrio",
             f"{ramo}: {type(e).__name__}. Las notas quedaron como las escribio la skill, "
             "sin revisar.",
         )
-        return resultado_skill
+        return resultado_skill, [], []
 
     graves = hallazgos_graves(revision)
     if revision.get("veredicto") != "corregir" or not graves:
-        return resultado_skill
+        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
 
     notificar_progreso(
         estado_vivo.PASO_REVISION,
@@ -125,20 +125,21 @@ async def _revisar_y_corregir(
     )
     try:
         with anyio.fail_after(TIMEOUT_REVISION_SEGUNDOS):
-            return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
+            corregido = await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
+        return corregido, hallazgos_para_avisar(revision, se_corrigio=True)
     except TimeoutError:
         notificar_aviso(
             "La correccion tardo demasiado",
             f"{ramo}: se corto. Revisa los hallazgos en {slug}_revision.json.",
         )
-        return resultado_skill
+        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
     except Exception as e:
         notificar_aviso(
             "La correccion no se pudo aplicar",
             f"{ramo}: {type(e).__name__}. Revisa los hallazgos en "
             f"{slug}_revision.json y corrige a mano lo que corresponda.",
         )
-        return resultado_skill
+        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
 
 
 async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitacora=None) -> Path:
@@ -170,7 +171,7 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
             ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
         )
 
-    resultado_skill = await _revisar_y_corregir(
+    resultado_skill, hallazgos = await _revisar_y_corregir(
         ruta_texto, resultado_skill, ramo, vault_dir, slug
     )
 
@@ -192,7 +193,8 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
     # apenas termina (ver cancelacion.py).
     with cancelacion.seccion_critica():
         ruta_docx = generar_docx(
-            trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config, texto_contexto
+            trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config,
+            texto_contexto, hallazgos,
         )
         if bitacora is not None:
             bitacora.archivo_creado(ruta_docx)

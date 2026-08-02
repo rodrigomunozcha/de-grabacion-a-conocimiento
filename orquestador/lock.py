@@ -1,7 +1,6 @@
 """
-Candado compartido para que el ciclo automatico (ejecutar_ciclo.py, via
-launchd) y el procesamiento manual (procesar_manual.py) nunca corran al
-mismo tiempo. Sin esto, ambos pueden recoger el mismo trabajo pendiente y
+Candado compartido para que dos procesamientos no corran al mismo tiempo
+(la app-boton y el procesamiento manual, o dos clics seguidos). Sin esto, ambos pueden recoger el mismo trabajo pendiente y
 procesarlo dos veces en paralelo (visto en vivo: dos títulos distintos para
 la misma clase, y un error al final porque un lado ya habia movido el audio
 que el otro estaba por transcribir).

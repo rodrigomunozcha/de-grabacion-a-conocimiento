@@ -274,6 +274,55 @@ def _agregar_markdown(doc: Document, md_texto: str, saltar_secciones: list[str] 
 
 
 COLOR_CONTEXTO_FONDO = "EAF3F7"
+COLOR_AVISO_FONDO = "FDF0E3"
+
+# Cuantos hallazgos se muestran. El documento ya es largo: una lista de veinte
+# avisos al principio no se lee, se saltea. Los que no caben quedan en el JSON
+# de revision para quien quiera el detalle completo.
+MAXIMO_HALLAZGOS_MOSTRADOS = 5
+
+
+def _agregar_puntos_a_verificar(doc: Document, hallazgos: list[dict]) -> None:
+    """
+    Va al principio, antes que nada: sirve para saber que leer con confianza y
+    que mirar con cuidado, y eso solo sirve ANTES de leer.
+
+    Existe porque el revisor era la segunda etapa mas cara y su resultado
+    terminaba en un archivo JSON que nadie abria. Se pagaba por una revision
+    invisible. Aca se muestra lo que quedo sin corregir, dicho como lo dijo el
+    revisor: donde esta y que tiene de raro, no una advertencia generica.
+    """
+    if not hallazgos:
+        return
+
+    h = doc.add_heading("Antes de confiar: puntos a verificar", level=1)
+    for run in h.runs:
+        run.font.color.rgb = COLOR_H1
+
+    intro = doc.add_paragraph()
+    _sombrear_parrafo(intro, COLOR_AVISO_FONDO)
+    run = intro.add_run(
+        "Una revision independiente comparo estas notas contra la transcripcion "
+        "de la clase. El resto del material quedo respaldado; estos puntos no."
+    )
+    run.italic = True
+
+    for hallazgo in hallazgos[:MAXIMO_HALLAZGOS_MOSTRADOS]:
+        p = doc.add_paragraph(style="List Bullet")
+        donde = str(hallazgo.get("donde", "")).strip()
+        if donde:
+            run = p.add_run(f"{donde}: ")
+            run.bold = True
+        _agregar_texto_con_negritas(p, str(hallazgo.get("problema", "")).strip())
+
+    restantes = len(hallazgos) - MAXIMO_HALLAZGOS_MOSTRADOS
+    if restantes > 0:
+        nota = doc.add_paragraph()
+        run = nota.add_run(
+            f"Hay {restantes} observacion(es) mas, de menor importancia, en el "
+            "archivo de revision de esta clase."
+        )
+        run.italic = True
 
 
 def _agregar_contexto_previo(doc: Document, texto: str) -> None:
@@ -339,6 +388,7 @@ def generar_docx(
     conceptos_repetidos: list[dict],
     config: dict,
     texto_contexto: str = "",
+    hallazgos: list[dict] | None = None,
 ) -> Path:
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
@@ -350,6 +400,10 @@ def generar_docx(
     subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitulo.runs[0].italic = True
     doc.add_page_break()
+
+    if hallazgos:
+        _agregar_puntos_a_verificar(doc, hallazgos)
+        doc.add_page_break()
 
     if texto_contexto:
         _agregar_contexto_previo(doc, texto_contexto)

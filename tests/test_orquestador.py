@@ -573,6 +573,57 @@ def probar_mapa_y_secciones() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_puntos_a_verificar() -> None:
+    """
+    El revisor era la segunda etapa mas cara y su resultado terminaba en un
+    JSON que nadie abria. Ahora se muestra, y tiene que ir ANTES del contenido:
+    saber que mirar con cuidado solo sirve antes de leer.
+    """
+    print("\n== puntos a verificar, al inicio del documento ==")
+    from docx import Document as Doc
+    from orquestador.revisor import hallazgos_para_avisar
+
+    revision = {"hallazgos": [
+        {"gravedad": "alta", "donde": "Aprendizaje, concepto 3", "problema": "GRAVE_SIN_RESPALDO"},
+        {"gravedad": "media", "donde": "Fuente, resumen", "problema": "MEDIO_A_VERIFICAR"},
+    ]}
+    check("si se corrigio lo grave, solo se avisa lo que quedo",
+          [h["problema"] for h in hallazgos_para_avisar(revision, se_corrigio=True)]
+          == ["MEDIO_A_VERIFICAR"])
+    check("si no se corrigio, lo grave tambien se avisa",
+          len(hallazgos_para_avisar(revision, se_corrigio=False)) == 2)
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", "# F\ntexto", "# A\ntexto", [{"concepto": "C", "por_que": "p"}],
+            {"rutas": {"output": str(tmp)}}, "# Contexto\nprevio",
+            hallazgos_para_avisar(revision, se_corrigio=True),
+        )
+        doc = Doc(str(ruta))
+        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+        check("aparece la seccion", any("puntos a verificar" in h.lower() for h in encabezados))
+        check("va antes del contexto previo",
+              next(i for i, h in enumerate(encabezados) if "verificar" in h.lower())
+              < next(i for i, h in enumerate(encabezados) if "Antes de empezar" in h))
+
+        texto = "\n".join(p.text for p in doc.paragraphs)
+        check("dice exactamente que esta raro", "MEDIO_A_VERIFICAR" in texto)
+        check("dice donde", "Fuente, resumen" in texto)
+
+        # Sin hallazgos no se pone nada: no hay por que alarmar sin motivo.
+        r2 = docx_generator.generar_docx(
+            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
+            "T2", "", "# A\ntexto", [], {"rutas": {"output": str(tmp)}}, "", [],
+        )
+        check("sin hallazgos la seccion no aparece",
+              not any("verificar" in p.text.lower() for p in Doc(str(r2)).paragraphs
+                      if p.style.name.startswith("Heading")))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def probar_aviso_anki() -> None:
     print("\n== aviso cuando Anki esta cerrado ==")
     from orquestador import anki_connect, dialogo_anki
@@ -620,6 +671,7 @@ if __name__ == "__main__":
     probar_formulas_en_tablas()
     probar_matematica_dentro_de_frases()
     probar_mapa_y_secciones()
+    probar_puntos_a_verificar()
     probar_aviso_anki()
 
     print()

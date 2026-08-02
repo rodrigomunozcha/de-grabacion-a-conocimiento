@@ -49,12 +49,14 @@ SKILL = "transcripciones-a-conocimiento"
 # queda dando vueltas releyendo archivos), esto corta la corrida en vez de
 # consumir cuota sin control. Una clase normal usa muchos menos.
 #
-# Estaba en 40 y se quedo corto en una clase real (visto en vivo): la skill
-# alcanzo a escribir las tres notas en el vault y se quedo sin turnos justo
-# antes de emitir la linea RESULTADO_ORQUESTADOR, asi que el orquestador dio
-# la corrida por fallida aunque el trabajo estaba hecho. Con vaults grandes
-# hay que explorar mas antes de escribir.
-MAX_TURNS = 80
+# Estuvo en 40 y se quedo corto en una clase real: la skill alcanzo a escribir
+# las tres notas y se quedo sin turnos justo antes de emitir la linea
+# RESULTADO_ORQUESTADOR, asi que la corrida se dio por fallida con el trabajo
+# hecho. Eso pasaba cuando la skill exploraba el vault entero; desde que la
+# carpeta llega resuelta (ver carpetas.py) el uso real es de 9 a 16 turnos,
+# medido sobre siete clases. Con 30 hay casi el doble de margen y, si algo se
+# descontrola, corta mucho antes de gastar de mas.
+MAX_TURNS = 30
 
 
 def construir_gate_de_rutas(vault_dir: str):
