@@ -19,6 +19,8 @@ el archivo de la primera.
 import json
 from pathlib import Path
 
+import anyio
+
 from . import anki_connect, cancelacion
 from .archivado import archivar_audio
 from .carpetas import resolver_carpeta_ramo
@@ -31,6 +33,13 @@ from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
 from .revisor import hallazgos_graves, revisar
 from .skill_runner import aplicar_skill, corregir_con_revision
+
+# Topes de tiempo por etapa. El tope de turnos no alcanza: una llamada al SDK
+# puede quedarse esperando una respuesta que no llega nunca (visto en vivo, con
+# el subproceso vivo y 0% de CPU durante veinte minutos). Sin esto, una clase
+# queda colgada para siempre y el estudiante no tiene forma de saberlo.
+TIMEOUT_SKILL_SEGUNDOS = 45 * 60
+TIMEOUT_REVISION_SEGUNDOS = 20 * 60
 
 
 
@@ -89,7 +98,15 @@ async def _revisar_y_corregir(
     """
     notificar_progreso(estado_vivo.PASO_REVISION, "comprobando contra la transcripcion")
     try:
-        revision = await revisar(ruta_texto, resultado_skill, ramo, vault_dir, slug)
+        with anyio.fail_after(TIMEOUT_REVISION_SEGUNDOS):
+            revision = await revisar(ruta_texto, resultado_skill, ramo, vault_dir, slug)
+    except TimeoutError:
+        notificar_aviso(
+            "La revision tardo demasiado",
+            f"{ramo}: se corto para no dejar la clase colgada. Las notas quedaron "
+            "como las escribio la skill, sin revisar.",
+        )
+        return resultado_skill
     except Exception as e:
         notificar_aviso(
             "La revision no corrio",
@@ -107,7 +124,14 @@ async def _revisar_y_corregir(
         f"corrigiendo {len(graves)} hallazgo(s) de gravedad alta",
     )
     try:
-        return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
+        with anyio.fail_after(TIMEOUT_REVISION_SEGUNDOS):
+            return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
+    except TimeoutError:
+        notificar_aviso(
+            "La correccion tardo demasiado",
+            f"{ramo}: se corto. Revisa los hallazgos en {slug}_revision.json.",
+        )
+        return resultado_skill
     except Exception as e:
         notificar_aviso(
             "La correccion no se pudo aplicar",
@@ -141,9 +165,10 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
 
     estado_vivo.fijar_clase(f"{ramo} - {trabajo_metadata.get('fecha', '')}")
     notificar_progreso(estado_vivo.PASO_SKILL, "puede tardar unos minutos")
-    resultado_skill = await aplicar_skill(
-        ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
-    )
+    with anyio.fail_after(TIMEOUT_SKILL_SEGUNDOS):
+        resultado_skill = await aplicar_skill(
+            ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
+        )
 
     resultado_skill = await _revisar_y_corregir(
         ruta_texto, resultado_skill, ramo, vault_dir, slug
@@ -154,6 +179,9 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
 
     texto_fuente = _leer_nota(resultado_skill.get("fuente"), vault_dir)
     texto_aprendizaje = _leer_nota(resultado_skill.get("aprendizaje"), vault_dir)
+    # Opcional a proposito: si la skill no la genero (una clase que no
+    # necesita contexto previo), el .docx se arma igual sin esa seccion.
+    texto_contexto = _leer_nota(resultado_skill.get("contexto"), vault_dir)
 
     trabajo = dict(trabajo_metadata)
     trabajo["archivos"] = trabajo_metadata["archivos_originales"]
@@ -163,7 +191,9 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
     # deja entre dos carpetas. Dura segundos y un aborto pedido aqui se aplica
     # apenas termina (ver cancelacion.py).
     with cancelacion.seccion_critica():
-        ruta_docx = generar_docx(trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config)
+        ruta_docx = generar_docx(
+            trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config, texto_contexto
+        )
         if bitacora is not None:
             bitacora.archivo_creado(ruta_docx)
         archivar_audio(trabajo, titulo, config, bitacora)

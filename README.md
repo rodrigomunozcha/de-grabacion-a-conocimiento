@@ -11,7 +11,13 @@ nada más que soltar el audio y hacer un clic. Por cada clase que grabes, el sis
 3. Revisa ese trabajo con un segundo agente independiente, que compara las notas contra
    la transcripción cruda y busca contenido sin respaldo. Si encuentra algo grave, manda
    a corregirlo antes de seguir.
-4. Arma un `.docx` con diseño pensado para leer y estudiar.
+4. Arma un `.docx` con diseño pensado para leer y estudiar, que incluye:
+   - **Contexto previo** al principio: menos de una página con lo que hay que saber
+     antes para entender la clase, sin suponer que ya lo sabes.
+   - **Materia lista para estudiar**: el contenido ya digerido, con ejemplos resueltos
+     paso a paso y cuándo se usa cada cosa.
+   - **Fórmulas dibujadas** con tipografía matemática real, no como texto plano.
+   - **Un mapa de la clase**, dibujado de verdad, no descrito en palabras.
 5. Archiva el audio original, ordenado por ramo y fecha.
 6. Agrega las preguntas y respuestas como flashcards en Anki.
 7. Te avisa con una notificación nativa de macOS cuando termina (o si algo falló).

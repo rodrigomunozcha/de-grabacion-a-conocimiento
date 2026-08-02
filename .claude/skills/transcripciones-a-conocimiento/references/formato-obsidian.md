@@ -161,3 +161,39 @@ tags: [cheat-sheet, economia, consulta-rápida]
 Si el vault usa notas de índice por ramo (`_Índice - <ramo>.md`), ofrece actualizarla para
 enlazar las notas nuevas, y pide confirmación antes de editarla. No sobrescribas notas
 existentes sin permiso.
+
+
+## Nota de contexto previo (solo en invocación automatizada)
+
+Nombre: `Contexto - <mismo título que la nota de aprendizaje>`
+
+Es lo primero que el estudiante lee, antes de la clase. Menos de una página.
+No supone conocimiento previo. Va al frente del `.docx` que arma el sistema.
+
+```markdown
+---
+ramo: <ramo>
+tipo: contexto
+tags: [<TagDelRamo>, contexto]
+---
+
+# Contexto previo - <título>
+
+## Qué necesitas saber antes
+
+- **<Concepto que la clase da por sabido>:** qué es, en dos líneas, desde cero.
+- **<Otro>:** ídem.
+
+## Fórmulas que van a aparecer
+
+$$<fórmula en Unicode con _{} y ^{}>$$
+
+Para qué sirve, en una línea.
+
+## Cómo se conecta con la clase
+
+Dos o tres líneas: qué va a hacer el profesor con esto.
+```
+
+Recordatorio: este es el único material que no sale de la transcripción. No lo
+mezcles con lo que dijo el profesor.

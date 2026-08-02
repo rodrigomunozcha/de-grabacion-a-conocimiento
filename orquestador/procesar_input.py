@@ -27,7 +27,7 @@ from pathlib import Path
 
 import anyio
 
-from . import bitacora, cancelacion, deteccion, estado_vivo, lock
+from . import bitacora, cancelacion, deteccion, dialogo_anki, estado_vivo, lock
 from .config import cargar_config
 from .finalizar_clase import procesar_pendientes_reconocidos
 from .notificaciones import notificar_aviso, notificar_inicio
@@ -70,6 +70,11 @@ def main() -> None:
                 "Deja tus grabaciones en la carpeta Input y vuelve a hacer clic.",
             )
             return
+
+        # Antes de arrancar, no despues: el estudiante esta frente al Mac justo
+        # ahora, porque acaba de hacer clic. Avisar al final, cuando ya se fue,
+        # no le sirve de nada (ver dialogo_anki.py).
+        dialogo_anki.confirmar_antes_de_empezar()
 
         notificar_inicio(len(pendientes))
         # El icono de la barra de menu es la unica senal visible de que algo

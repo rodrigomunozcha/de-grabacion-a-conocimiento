@@ -14,9 +14,10 @@ from pathlib import Path
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 from docx.oxml import OxmlElement
 
+from . import formulas, mapa_visual
 from .nombres import nombre_base
 
 COLOR_H1 = RGBColor(0x1F, 0x4E, 0x5F)
@@ -28,7 +29,16 @@ COLOR_TABLA_HEADER = "2E7486"
 # no aportan cuando el estudiante tiene solo unas horas antes de la prueba (pidio
 # sacarlas del .docx). La nota de Obsidian las sigue teniendo completas, por
 # si las usa mas adelante para repaso de largo plazo.
-SECCIONES_A_OMITIR_EN_DOCX = ["preguntas de repaso", "plan de repaso"]
+SECCIONES_A_OMITIR_EN_DOCX = [
+    "preguntas de repaso",
+    "plan de repaso",
+    # La sesion por bloques de tiempo dice COMO estudiar; lo que el estudiante
+    # necesita en el .docx es la materia ya digerida y con ejemplos, que va en
+    # "Materia lista para estudiar" (ver SKILL.md). La sesion sigue completa en
+    # la nota de Obsidian para quien quiera organizarse con ella.
+    "sesión de estudio",
+    "sesion de estudio",
+]
 
 
 def _sombrear_parrafo(paragraph, color_hex: str) -> None:
@@ -54,7 +64,13 @@ def _agregar_texto_con_negritas(paragraph, texto: str) -> None:
             run = paragraph.add_run(parte[2:-2])
             run.bold = True
         else:
-            paragraph.add_run(parte)
+            # Dentro del texto normal todavia puede haber formulas cortas
+            # ($x̄$), que necesitan subindices de verdad (ver formulas.py).
+            for trozo, es_formula in formulas.partir_por_formulas_inline(parte):
+                if es_formula:
+                    formulas.escribir_en_parrafo(paragraph, trozo)
+                elif trozo:
+                    paragraph.add_run(trozo)
 
 
 def _quitar_frontmatter(md_texto: str) -> str:
@@ -108,6 +124,46 @@ def _agregar_tabla_markdown(doc: Document, filas: list[list[str]]) -> None:
             celda.text = texto
 
 
+def _leer_bloque_cercado(lineas: list[str], i: int) -> tuple[str, int]:
+    """Devuelve el contenido de un bloque ``` y la linea siguiente al cierre."""
+    i += 1
+    dentro = []
+    while i < len(lineas) and not lineas[i].strip().startswith("```"):
+        dentro.append(lineas[i])
+        i += 1
+    return "\n".join(dentro), i + 1
+
+
+def _agregar_mapa(doc: Document, crudo: str) -> None:
+    """Dibuja el mapa conceptual. Si los datos vienen mal, no se pone nada: un
+    mapa es un extra y no puede costarle el documento a una clase."""
+    import json
+
+    try:
+        datos = json.loads(crudo)
+        ruta = mapa_visual.dibujar(datos.get("centro", ""), datos.get("ramas") or [])
+    except Exception:
+        ruta = None
+    if ruta is None:
+        return
+
+    # La nota suele traer su propio encabezado ("Mapa visual") justo antes del
+    # bloque. Poner otro encima deja dos titulos seguidos diciendo lo mismo.
+    ultimo = doc.paragraphs[-1] if doc.paragraphs else None
+    ya_tiene_titulo = (
+        ultimo is not None
+        and ultimo.style.name.startswith("Heading")
+        and "mapa" in ultimo.text.lower()
+    )
+    if not ya_tiene_titulo:
+        h = doc.add_heading("Mapa de la clase", level=1)
+        for run in h.runs:
+            run.font.color.rgb = COLOR_H1
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run().add_picture(str(ruta), width=Inches(6.3))
+
+
 def _agregar_markdown(doc: Document, md_texto: str, saltar_secciones: list[str] | None = None) -> None:
     md_texto = _quitar_frontmatter(md_texto)
     saltar_secciones = [s.lower() for s in (saltar_secciones or [])]
@@ -140,6 +196,18 @@ def _agregar_markdown(doc: Document, md_texto: str, saltar_secciones: list[str] 
             i += 1
             continue
         if linea.strip() == "---":
+            i += 1
+            continue
+
+        if linea.strip().startswith("```mapa"):
+            # El modelo entrega la estructura del mapa como datos; el dibujo lo
+            # hace mapa_visual.py. Describir un mapa no es un mapa.
+            crudo, i = _leer_bloque_cercado(lineas, i)
+            _agregar_mapa(doc, crudo)
+            continue
+
+        if formulas.es_formula_destacada(linea):
+            formulas.agregar_formula_destacada(doc, formulas.texto_de_formula_destacada(linea))
             i += 1
             continue
 
@@ -187,6 +255,37 @@ def _agregar_markdown(doc: Document, md_texto: str, saltar_secciones: list[str] 
         i += 1
 
 
+COLOR_CONTEXTO_FONDO = "EAF3F7"
+
+
+def _agregar_contexto_previo(doc: Document, texto: str) -> None:
+    """
+    Va al principio del documento, antes que nada del contenido de la clase.
+
+    Existe porque una clase sobre algo nuevo se escucha sin red: el profesor da
+    por sabido lo que vio en cursos anteriores, y el estudiante que no lo tiene
+    fresco pierde la primera media hora tratando de ubicarse. Esta seccion se
+    lee primero y da justo el piso necesario para que el resto se entienda.
+
+    Es lo unico del documento que NO sale de la transcripcion, asi que se
+    marca como tal: el resto del material vale porque es lo que el profesor
+    dijo, y esa distincion no se puede difuminar.
+    """
+    h = doc.add_heading("Antes de empezar: lo que conviene tener claro", level=1)
+    for run in h.runs:
+        run.font.color.rgb = COLOR_H1
+
+    aviso = doc.add_paragraph()
+    _sombrear_parrafo(aviso, COLOR_CONTEXTO_FONDO)
+    run = aviso.add_run(
+        "Esta seccion no es parte de la clase: es contexto agregado para que lo "
+        "que viene se entienda desde cero. Leela primero."
+    )
+    run.italic = True
+
+    _agregar_markdown(doc, texto)
+
+
 def _agregar_conceptos_repetidos(doc: Document, conceptos: list[dict]) -> None:
     h = doc.add_heading("Conceptos mas repetidos por el profesor", level=1)
     for run in h.runs:
@@ -221,6 +320,7 @@ def generar_docx(
     texto_aprendizaje: str,
     conceptos_repetidos: list[dict],
     config: dict,
+    texto_contexto: str = "",
 ) -> Path:
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
@@ -232,6 +332,10 @@ def generar_docx(
     subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitulo.runs[0].italic = True
     doc.add_page_break()
+
+    if texto_contexto:
+        _agregar_contexto_previo(doc, texto_contexto)
+        doc.add_page_break()
 
     if conceptos_repetidos:
         _agregar_conceptos_repetidos(doc, conceptos_repetidos)
@@ -252,4 +356,7 @@ def generar_docx(
     base = nombre_base(trabajo["numero_clase"], trabajo["fecha"], titulo)
     ruta = output_dir / f"{base}.docx"
     doc.save(str(ruta))
+    # Las imagenes ya quedaron incrustadas en el .docx.
+    formulas.limpiar_temporales()
+    mapa_visual.limpiar_temporales()
     return ruta

@@ -143,9 +143,76 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      vez, señal de que es candidato fuerte para la prueba). Para cada uno, el nombre
      del concepto y una razón breve que hable de frecuencia o énfasis ("aparece en
      la definición, en el ejemplo y se retoma al cierre"), no de importancia general.
+   - **Una sección "Materia lista para estudiar"** dentro de la nota de
+     aprendizaje, en el lugar donde iría la sesión de estudio de 90 minutos
+     (esa sesión sigue existiendo en la nota, pero el `.docx` mostrará esta en
+     su lugar). Es la sección más importante del documento: el estudiante
+     debería poder estudiar la clase entera solo con ella.
+
+     No es un resumen ni un plan de estudio. Es **la materia ya digerida**:
+     - Explica cada tema **desarrollado**, no en una línea. Si el profesor tardó
+       veinte minutos en algo, aquí necesita más que una viñeta.
+     - **Muchos ejemplos numéricos y concretos**, resueltos paso a paso. Si el
+       profesor dio uno, resuélvelo completo y agrega otro parecido para que el
+       estudiante compruebe si entendió.
+     - **Cuándo se usa cada cosa.** La duda real no suele ser qué es una
+       fórmula, sino cuál toca en cada caso. Dilo explícitamente.
+     - **Los errores que se cometen aquí**, y cómo se detectan.
+     - Puedes agregar contexto externo que facilite entender, marcándolo como
+       **(aporte externo)**, siempre que apoye lo que el profesor enseñó y no lo
+       reemplace.
+     - Escríbelo para alguien que faltó a la clase y solo tiene esto.
+
+   - **Un mapa visual, como datos y no como descripción.** No escribas "el mapa
+     tendría en el centro X y tres ramas": el sistema lo dibuja de verdad y lo
+     inserta como imagen en el `.docx`. Entrégalo dentro de la nota de
+     aprendizaje, en un bloque con este formato exacto:
+
+     ````
+     ```mapa
+     {"centro": "<idea central, 3 o 4 palabras>",
+      "ramas": [{"titulo": "<rama, hasta 5 palabras>",
+                 "puntos": ["<punto breve>", "<otro>"]}]}
+     ```
+     ````
+
+     Entre 3 y 5 ramas, y hasta 3 puntos por rama. Textos cortos: es un dibujo,
+     no un párrafo. Si el tema no se presta para un mapa, omite el bloque.
+
+   - **Una nota de contexto previo**, guardada en la misma carpeta con el
+     nombre `Contexto - <mismo título>`. Es lo único de todo el material que no
+     sale de la transcripción: es el piso mínimo que hay que tener para
+     entender la clase. Su función es leerse ANTES de la clase, no después.
+
+     Reglas para que sirva:
+     - **Menos de una página.** Si no cabe, sobra contenido.
+     - **No supongas nada.** Si la clase usa un concepto de un curso anterior,
+       explícalo desde cero en dos o tres líneas. El estudiante puede no
+       haberlo visto nunca o tenerlo olvidado.
+     - **Práctica, no académica.** Es un torpedo: definiciones cortas, para qué
+       sirve cada cosa, y las fórmulas que se van a usar. Nada de historia ni
+       de rodeos.
+     - **Solo lo que esta clase necesita.** No es un resumen del ramo, es lo
+       justo para que el profesor se entienda.
+     - Si la clase no necesita ningún contexto previo (es continuación directa
+       y todo se explica solo), no crees la nota y reporta `"contexto": ""`.
+
+     **Fórmulas** (aplica a toda la nota, no solo al contexto). Una fórmula
+     importante va sola en su línea, entre `$$`, y **escrita en LaTeX**: el
+     sistema la dibuja como imagen con tipografía matemática real (barra de
+     fracción, radical que se estira, sombreros). Úsalo sin miedo, no cuesta
+     nada extra:
+
+     ```
+     $$\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}$$
+     ```
+
+     Para símbolos sueltos dentro de una frase, escribe Unicode directo (σ, μ,
+     √, ±, x̄, p̂, Σ, ≈), que se lee bien en el renglón. Si necesitas un
+     subíndice dentro de una frase, ponlo entre `$` con la forma `s^{2}`.
    - Como última línea de tu respuesta de texto (sin nada más en esa línea, JSON
      válido en una sola línea):
-     `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total]}`
+     `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "contexto": "<ruta completa de la nota de contexto previo, o cadena vacia si no hacia falta>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total]}`
 
    Esto es para que el sistema de orquestación pueda ubicar las notas y armar el
    `.docx` de respaldo sin tener que releer la transcripción de nuevo. No agregues

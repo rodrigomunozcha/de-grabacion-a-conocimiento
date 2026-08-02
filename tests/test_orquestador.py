@@ -344,6 +344,181 @@ def probar_seccion_critica() -> None:
     check("el candado queda libre despues", not cancelacion._seccion_critica.locked())
 
 
+def probar_formulas() -> None:
+    print("\n== formulas con subindices y superindices reales ==")
+    from docx import Document as Doc
+    from orquestador import formulas
+
+    check("reconoce una formula destacada", formulas.es_formula_destacada("$$x̄ ± σ$$"))
+    check("no confunde texto normal con formula", not formulas.es_formula_destacada("cuesta $5 o $8"))
+    check("extrae el contenido", formulas.texto_de_formula_destacada("$$x̄$$") == "x̄")
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        # Una formula destacada se dibuja como imagen, con tipografia
+        # matematica de verdad (barra de fraccion, radical que se estira).
+        doc = Doc()
+        formulas.agregar_formula_destacada(
+            doc, r"\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}")
+        ruta = Path(tmp) / "conformula.docx"
+        doc.save(str(ruta))
+        check("la formula destacada queda como imagen",
+              len(Doc(str(ruta)).inline_shapes) == 1,
+              f"imagenes={len(Doc(str(ruta)).inline_shapes)}")
+
+        # Si el dibujo falla, no se pierde la formula: se escribe como texto.
+        original = formulas._renderizar_imagen
+        formulas._renderizar_imagen = lambda _l: None
+        try:
+            doc_fb = Doc()
+            formulas.agregar_formula_destacada(doc_fb, "s^{2} = Σ(x_i - x̄)^{2}")
+            p = doc_fb.paragraphs[-1]
+            check("sin imagen se cae a texto con superindices",
+                  [r.text for r in p.runs if r.font.superscript] == ["2", "2"])
+            check("sin imagen se cae a texto con subindices",
+                  [r.text for r in p.runs if r.font.subscript] == ["i"])
+            check("y conserva los simbolos Unicode", "Σ" in p.text and "x̄" in p.text)
+        finally:
+            formulas._renderizar_imagen = original
+
+        # Una formula corta dentro de una frase sigue siendo texto: una imagen
+        # ahi quedaria desalineada con el renglon.
+        doc2 = Doc()
+        par = doc2.add_paragraph()
+        from orquestador.docx_generator import _agregar_texto_con_negritas
+        _agregar_texto_con_negritas(par, "La varianza $s^{2}$ usa **n-1** abajo.")
+        check("la formula inline se formatea",
+              [r.text for r in par.runs if r.font.superscript] == ["2"])
+        check("la negrita sigue funcionando junto a la formula",
+              any(r.bold and r.text == "n-1" for r in par.runs))
+        check("un guion bajo suelto fuera de $ no se toca",
+              "_" in _texto_render(doc2, "archivo_de_prueba.txt"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _texto_render(doc, texto: str) -> str:
+    from orquestador.docx_generator import _agregar_texto_con_negritas
+    p = doc.add_paragraph()
+    _agregar_texto_con_negritas(p, texto)
+    return p.text
+
+
+def probar_contexto_va_primero() -> None:
+    """El contexto solo sirve si se lee antes de la clase, o sea si esta al
+    principio del documento."""
+    print("\n== la seccion de contexto va al frente ==")
+    from docx import Document as Doc
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "Titulo", "# Fuente\ntexto", "# Aprendizaje\ntexto",
+            [{"concepto": "C", "por_que": "p"}],
+            {"rutas": {"output": str(tmp)}},
+            "# Contexto previo\n\nAlgo que hay que saber antes.",
+        )
+        encabezados = [p.text for p in Doc(str(ruta)).paragraphs
+                       if p.style.name.startswith("Heading") and p.text.strip()]
+        check("aparece la seccion de contexto",
+              any("Antes de empezar" in h for h in encabezados), str(encabezados))
+        check("va antes que los conceptos repetidos",
+              encabezados.index("Antes de empezar: lo que conviene tener claro")
+              < next(i for i, h in enumerate(encabezados) if "repetidos" in h))
+
+        # Sin contexto el documento se arma igual: la seccion es opcional.
+        ruta2 = docx_generator.generar_docx(
+            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
+            "Otro", "# Fuente\ntexto", "# Aprendizaje\ntexto", [],
+            {"rutas": {"output": str(tmp)}}, "",
+        )
+        sin = [p.text for p in Doc(str(ruta2)).paragraphs if p.style.name.startswith("Heading")]
+        check("sin contexto el .docx se arma igual",
+              ruta2.is_file() and not any("Antes de empezar" in h for h in sin))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_mapa_y_secciones() -> None:
+    """El mapa se dibuja de verdad, y la sesion por bloques de tiempo cede su
+    lugar en el .docx a la materia ya digerida."""
+    print("\n== mapa dibujado y secciones del .docx ==")
+    from docx import Document as Doc
+
+    aprendizaje = (
+        "# Aprendizaje\n\n"
+        "## 5. Materia lista para estudiar\nExplicacion con ejemplos.\n\n"
+        "## Sesión de estudio de 90 minutos\nESTO_NO_VA_AL_DOCX\n\n"
+        "## Mapa visual\n"
+        "```mapa\n"
+        '{"centro": "Tema", "ramas": [{"titulo": "Rama A", "puntos": ["p1", "p2"]},'
+        ' {"titulo": "Rama B", "puntos": ["p3"]}]}\n'
+        "```\n"
+    )
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", "# Fuente\ntexto", aprendizaje, [], {"rutas": {"output": str(tmp)}}, "",
+        )
+        doc = Doc(str(ruta))
+        texto = "\n".join(p.text for p in doc.paragraphs)
+        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+
+        check("la sesion por bloques no va al .docx", "ESTO_NO_VA_AL_DOCX" not in texto)
+        check("la materia lista para estudiar si va",
+              any("Materia lista para estudiar" in h for h in encabezados))
+        check("el mapa se inserta como imagen", len(doc.inline_shapes) == 1,
+              f"imagenes={len(doc.inline_shapes)}")
+        check("no se duplica el titulo del mapa",
+              sum(1 for h in encabezados if "mapa" in h.lower()) == 1,
+              str([h for h in encabezados if "mapa" in h.lower()]))
+        check("el bloque de datos crudo no se imprime", '"centro"' not in texto)
+
+        # Datos mal formados: el documento se arma igual, sin mapa.
+        malo = "# A\n\n## Mapa visual\n```mapa\nesto no es json\n```\n"
+        r2 = docx_generator.generar_docx(
+            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
+            "T2", "", malo, [], {"rutas": {"output": str(tmp)}}, "",
+        )
+        check("un mapa mal formado no rompe el documento",
+              r2.is_file() and len(Doc(str(r2)).inline_shapes) == 0)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_aviso_anki() -> None:
+    print("\n== aviso cuando Anki esta cerrado ==")
+    from orquestador import anki_connect, dialogo_anki
+
+    original = anki_connect.verificar_conexion
+    original_preg = dialogo_anki._preguntar
+    try:
+        anki_connect.verificar_conexion = lambda: True
+        pregunto = []
+        dialogo_anki._preguntar = lambda reintento=False: pregunto.append(1) or dialogo_anki.OPCION_SEGUIR
+        sigue = dialogo_anki.confirmar_antes_de_empezar()
+        check("con Anki abierto no molesta con ningun dialogo", sigue and not pregunto)
+
+        anki_connect.verificar_conexion = lambda: False
+        dialogo_anki._preguntar = lambda reintento=False: dialogo_anki.OPCION_SEGUIR
+        check("'continuar sin Anki' deja procesar", dialogo_anki.confirmar_antes_de_empezar())
+
+        # Dice que ya lo abrio pero sigue cerrado: se vuelve a comprobar en vez
+        # de creerle, y despues de unos intentos se sigue igual.
+        veces = []
+        dialogo_anki._preguntar = lambda reintento=False: (veces.append(reintento)
+                                                           or dialogo_anki.OPCION_YA_ABRI)
+        check("'ya lo abri' con Anki aun cerrado no bloquea",
+              dialogo_anki.confirmar_antes_de_empezar())
+        check("reintenta y avisa que sigue sin detectarlo",
+              len(veces) == dialogo_anki.INTENTOS_MAXIMOS and veces[1] is True, str(veces))
+    finally:
+        anki_connect.verificar_conexion = original
+        dialogo_anki._preguntar = original_preg
+
+
 if __name__ == "__main__":
     probar_nombres()
     probar_deteccion()
@@ -355,6 +530,10 @@ if __name__ == "__main__":
     probar_bitacora_deshace_todo()
     probar_bitacora_no_borra_lo_ajeno()
     probar_seccion_critica()
+    probar_formulas()
+    probar_contexto_va_primero()
+    probar_mapa_y_secciones()
+    probar_aviso_anki()
 
     print()
     if fallos:
