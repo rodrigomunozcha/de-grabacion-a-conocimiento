@@ -22,9 +22,23 @@ rm -rf "Procesar Clases.app" "Configurar Sistema.app"
 osacompile -o "Procesar Clases.app" ProcesarClases.applescript
 osacompile -o "Configurar Sistema.app" ConfigurarSistema.applescript
 
+# Icono de la barra de menu. Es opcional: si swiftc no esta (no estan las
+# herramientas de linea de comandos de Xcode), el pipeline funciona igual,
+# solo que sin senal visible mientras trabaja.
+if command -v swiftc >/dev/null 2>&1; then
+  echo "Compilando el icono de la barra de menu..."
+  swiftc -O -o ../barra_menu/BarraEstado ../barra_menu/BarraEstado.swift
+  ICONO="  - barra_menu/BarraEstado            (icono de progreso en la barra superior)"
+else
+  echo "Aviso: swiftc no esta disponible, se omite el icono de la barra de menu."
+  echo "       Se instala con: xcode-select --install"
+  ICONO="  (sin icono de barra de menu: falta swiftc)"
+fi
+
 echo
 echo "Listo. Se crearon:"
 echo "  - boton_app/Procesar Clases.app     (procesa las grabaciones de Input)"
 echo "  - boton_app/Configurar Sistema.app  (asistente de configuracion)"
+echo "$ICONO"
 echo
-echo "Puedes arrastrar ambas al Dock para tenerlas a mano."
+echo "Puedes arrastrar las dos apps al Dock para tenerlas a mano."

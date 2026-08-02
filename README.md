@@ -123,6 +123,32 @@ Todo lo que pasó queda también anotado en `Estado.txt` (en la raíz del proyec
 te lo perdiste o quieres confirmar que no quedó pegado. Se abre con doble clic, como
 cualquier archivo de texto.
 
+### Ver cómo va, y detenerlo si hace falta
+
+Mientras se procesa una clase aparece un ícono en la barra superior del Mac, junto al
+reloj. Muestra en qué paso va (de 5), cuánto lleva y una estimación de lo que falta.
+Desaparece solo al terminar.
+
+La estimación solo se da donde hay con qué calcularla: la transcripción se estima desde
+la duración del audio y la velocidad medida en tus corridas anteriores; las etapas de IA
+usan el promedio de tu propio historial. Si todavía no hay datos, no muestra un número
+en vez de inventarlo.
+
+Al hacer clic en el ícono también aparece **"Detener y deshacer todo"**. No solo corta el
+proceso: revierte lo que se haya alcanzado a hacer (las notas escritas, el documento
+generado, las flashcards agregadas) y devuelve tu grabación a donde estaba, sin procesar.
+Queda como si nunca hubieras hecho clic.
+
+Hay unos pocos segundos, mientras se guarda el audio en su carpeta definitiva, en los que
+detener podría dejar el archivo a medio camino. Durante ese rato el botón se muestra en
+gris explicando por qué, y si pides detener justo ahí, se aplica apenas termina.
+
+Si el Mac se apaga en mitad de un procesamiento, la corrida queda a medias. Se deshace con:
+
+```bash
+python3 -m orquestador.bitacora
+```
+
 ## Si algo no funciona
 
 - **La app no hace nada al hacer doble clic:** confirma que tu Python 3.13 está

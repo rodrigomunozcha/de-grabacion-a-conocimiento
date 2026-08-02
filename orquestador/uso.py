@@ -46,6 +46,41 @@ def registrar_uso(etapa: str, slug: str, mensaje_resultado) -> None:
         pass
 
 
+def registrar_transcripcion(slug: str, duracion_audio_s: float, duracion_real_s: float) -> None:
+    """
+    Anota cuanto se demoro en transcribir y cuanto duraba el audio, para poder
+    estimar la proxima vez con datos propios.
+
+    Existe porque la primera version estimaba con una velocidad fija escrita a
+    mano, y esa constante estaba mal: se calibro suponiendo la duracion de un
+    audio en vez de medirla. En una clase real la estimacion se quedo corta por
+    un factor de tres y el icono decia "ya se paso de lo habitual" cuando en
+    realidad todo iba bien. Una estimacion inventada es peor que no dar
+    ninguna, porque preocupa sin motivo.
+
+    La velocidad ademas no es una sola: depende del audio. Whisper reintenta
+    los tramos donde tiene poca confianza, asi que una grabacion con peor
+    sonido puede tardar varias veces mas con el mismo modelo. Por eso se
+    guarda cada corrida y despues se usa la mas lenta de las recientes.
+    """
+    if not duracion_audio_s or not duracion_real_s:
+        return
+    try:
+        linea = {
+            "fecha": datetime.now().isoformat(timespec="seconds"),
+            "etapa": "transcripcion",
+            "slug": slug,
+            "duracion_s": round(duracion_real_s),
+            "audio_s": round(duracion_audio_s),
+            "velocidad": round(duracion_audio_s / duracion_real_s, 2),
+        }
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(RUTA_USO, "a", encoding="utf-8") as f:
+            f.write(json.dumps(linea, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def resumen() -> str:
     """Promedios por etapa, para saber cuanto cuesta de verdad cada parte."""
     if not RUTA_USO.exists():

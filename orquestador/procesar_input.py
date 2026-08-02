@@ -27,7 +27,7 @@ from pathlib import Path
 
 import anyio
 
-from . import deteccion, lock
+from . import bitacora, cancelacion, deteccion, estado_vivo, lock
 from .config import cargar_config
 from .finalizar_clase import procesar_pendientes_reconocidos
 from .notificaciones import notificar_aviso, notificar_inicio
@@ -47,9 +47,9 @@ def _asegurar_estabilidad(config: dict) -> None:
         time.sleep(ESPERA_ESTABILIDAD_SEGUNDOS)
 
 
-async def _procesar_async(config: dict) -> bool:
-    trabajos = procesar_pendientes(config)
-    generados = await procesar_pendientes_reconocidos(config)
+async def _procesar_async(config: dict, registro) -> bool:
+    trabajos = procesar_pendientes(config, registro)
+    generados = await procesar_pendientes_reconocidos(config, registro)
     return bool(trabajos) or bool(generados)
 
 
@@ -64,6 +64,7 @@ def main() -> None:
         input_dir = Path(config["rutas"]["input"])
         pendientes = deteccion.listar_audios(input_dir)
         if not pendientes:
+            estado_vivo.limpiar()
             notificar_aviso(
                 "Nada que procesar",
                 "Deja tus grabaciones en la carpeta Input y vuelve a hacer clic.",
@@ -71,14 +72,44 @@ def main() -> None:
             return
 
         notificar_inicio(len(pendientes))
+        # El icono de la barra de menu es la unica senal visible de que algo
+        # esta pasando mientras el Mac queda solo. Se abre aca y se cierra al
+        # terminar, para que exista exactamente mientras hay trabajo.
+        estado_vivo.iniciar()
+        estado_vivo.lanzar_visor()
+
+        # Desde aca la corrida se puede abortar: todo lo que cambie queda
+        # anotado, y el aborto lo deshace (ver bitacora.py y cancelacion.py).
+        registro = bitacora.Bitacora()
+        cancelacion.instalar(registro)
+
         _asegurar_estabilidad(config)
-        hubo_trabajo = anyio.run(_procesar_async, config)
+        try:
+            hubo_trabajo = anyio.run(_procesar_async, config, registro)
+        except cancelacion.Abortado:
+            revertido = cancelacion.deshacer_todo()
+            estado_vivo.cancelado(revertido)
+            notificar_aviso(
+                "Procesamiento detenido",
+                "Se deshizo todo: tus grabaciones y tus notas quedaron como estaban.",
+            )
+            return
+        except Exception:
+            estado_vivo.terminar("El procesamiento se interrumpió", error=True)
+            raise
+
+        # Terminó bien: lo anotado ya no hace falta, y conservarlo permitiria
+        # deshacer despues una clase que si se quiso procesar.
+        registro.limpiar()
 
         if not hubo_trabajo:
+            estado_vivo.terminar("Los archivos parecían seguir copiándose")
             notificar_aviso(
                 "Todavía copiando",
                 "Los archivos parecen seguir copiándose. Espera un momento y vuelve a hacer clic.",
             )
+        else:
+            estado_vivo.terminar("Listo, revisa la carpeta Output")
     finally:
         lock.liberar(lock_file)
 

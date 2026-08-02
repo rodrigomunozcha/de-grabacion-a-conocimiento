@@ -11,7 +11,7 @@ from .ensayo import es_ensayo
 from .nombres import nombre_base
 
 
-def archivar_audio(trabajo: dict, titulo: str, config: dict) -> list[Path]:
+def archivar_audio(trabajo: dict, titulo: str, config: dict, bitacora=None) -> list[Path]:
     ramo = trabajo["ramo"]
     procesados_dir = Path(config["rutas"]["procesados"]) / ramo
     procesados_dir.mkdir(parents=True, exist_ok=True)
@@ -32,6 +32,11 @@ def archivar_audio(trabajo: dict, titulo: str, config: dict) -> list[Path]:
                 continue
             shutil.copy2(str(origen), str(destino))
         else:
+            # Se anota ANTES de mover: si el corte llega justo despues del
+            # movimiento pero antes de anotarlo, el audio quedaria fuera de
+            # su sitio sin nada que lo devuelva.
+            if bitacora is not None:
+                bitacora.audio_movido(origen, destino)
             shutil.move(str(origen), str(destino))
         destinos.append(destino)
     return destinos

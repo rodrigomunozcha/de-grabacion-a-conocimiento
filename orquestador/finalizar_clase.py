@@ -19,12 +19,13 @@ el archivo de la primera.
 import json
 from pathlib import Path
 
-from . import anki_connect
+from . import anki_connect, cancelacion
 from .archivado import archivar_audio
 from .carpetas import resolver_carpeta_ramo
 from .config import cargar_config, dir_pendientes, guardar_config
 from .docx_generator import generar_docx
 from .ensayo import es_ensayo
+from . import estado_vivo
 from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
@@ -86,6 +87,7 @@ async def _revisar_y_corregir(
     escribio la skill: las notas ya estan en el vault y son utiles. Que la
     revision se caiga no puede costarle la clase al estudiante.
     """
+    notificar_progreso(estado_vivo.PASO_REVISION, "comprobando contra la transcripcion")
     try:
         revision = await revisar(ruta_texto, resultado_skill, ramo, vault_dir, slug)
     except Exception as e:
@@ -101,8 +103,8 @@ async def _revisar_y_corregir(
         return resultado_skill
 
     notificar_progreso(
-        "Corrigiendo tras la revision",
-        f"{len(graves)} hallazgo(s) de gravedad alta",
+        estado_vivo.PASO_REVISION,
+        f"corrigiendo {len(graves)} hallazgo(s) de gravedad alta",
     )
     try:
         return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
@@ -115,7 +117,7 @@ async def _revisar_y_corregir(
         return resultado_skill
 
 
-async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Path:
+async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitacora=None) -> Path:
     ruta_texto = trabajo_metadata["archivo_texto"]
     ramo = trabajo_metadata["ramo"]
     slug = _slug_de(trabajo_metadata)
@@ -130,7 +132,15 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
     if config_cambio and not es_ensayo(config):
         guardar_config(config)
 
-    notificar_progreso("Analizando con la skill", f"{ramo} - puede tardar unos minutos")
+    # Antes de que la skill escriba nada: se respalda lo que ya habia en la
+    # carpeta del ramo. Es el unico cambio que no se podria revertir despues,
+    # porque la skill puede editar notas existentes (el indice del ramo) y esas
+    # no se reconstruyen solas (ver bitacora.py).
+    if bitacora is not None:
+        bitacora.fotografiar_carpeta(carpeta_ramo)
+
+    estado_vivo.fijar_clase(f"{ramo} - {trabajo_metadata.get('fecha', '')}")
+    notificar_progreso(estado_vivo.PASO_SKILL, "puede tardar unos minutos")
     resultado_skill = await aplicar_skill(
         ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
     )
@@ -148,9 +158,15 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
     trabajo = dict(trabajo_metadata)
     trabajo["archivos"] = trabajo_metadata["archivos_originales"]
 
-    notificar_progreso("Armando el .docx y archivando", titulo)
-    ruta_docx = generar_docx(trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config)
-    archivar_audio(trabajo, titulo, config)
+    notificar_progreso(estado_vivo.PASO_DOCUMENTO, titulo)
+    # El unico tramo que no se puede cortar por la mitad: mover el audio lo
+    # deja entre dos carpetas. Dura segundos y un aborto pedido aqui se aplica
+    # apenas termina (ver cancelacion.py).
+    with cancelacion.seccion_critica():
+        ruta_docx = generar_docx(trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config)
+        if bitacora is not None:
+            bitacora.archivo_creado(ruta_docx)
+        archivar_audio(trabajo, titulo, config, bitacora)
 
     if trabajo.get("numeracion") == "orden":
         # Solo para ramos manuales (fuera del horario con calendario propio):
@@ -164,12 +180,14 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
     if tarjetas and es_ensayo(config):
         # Anki no tiene deshacer comodo ni mazos desechables: en un ensayo no
         # se toca, solo se informa cuantas tarjetas habrian entrado.
-        notificar_progreso("Ensayo: Anki no se toca", f"{len(tarjetas)} tarjetas se habrian agregado")
+        notificar_progreso(estado_vivo.PASO_ANKI, f"ensayo: {len(tarjetas)} tarjetas no se agregan")
     elif tarjetas:
         if anki_connect.verificar_conexion():
-            notificar_progreso("Agregando a Anki", f"{len(tarjetas)} tarjetas")
+            notificar_progreso(estado_vivo.PASO_ANKI, f"{len(tarjetas)} tarjetas")
             anki_connect.crear_mazo_si_no_existe(ramo)
-            anki_connect.agregar_flashcards(ramo, tarjetas)
+            ids = anki_connect.agregar_flashcards(ramo, tarjetas)
+            if bitacora is not None:
+                bitacora.notas_anki(ids)
         else:
             notificar_aviso(
                 "Faltaron las flashcards",
@@ -181,7 +199,7 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict) -> Pat
     return ruta_docx
 
 
-async def procesar_pendientes_reconocidos(config: dict | None = None) -> list[Path]:
+async def procesar_pendientes_reconocidos(config: dict | None = None, bitacora=None) -> list[Path]:
     if config is None:
         config = cargar_config()
 
@@ -195,7 +213,7 @@ async def procesar_pendientes_reconocidos(config: dict | None = None) -> list[Pa
             continue  # ya se proceso antes
 
         try:
-            ruta_docx = await procesar_clase_reconocida(trabajo_metadata, config)
+            ruta_docx = await procesar_clase_reconocida(trabajo_metadata, config, bitacora)
         except Exception as e:
             contexto = f"{trabajo_metadata['ramo']} - {trabajo_metadata['fecha']}"
             notificar_error(contexto, f"{type(e).__name__}: {e}")

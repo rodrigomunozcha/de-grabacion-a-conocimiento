@@ -46,6 +46,17 @@ CAMPO_ANVERSO = "Anverso"
 CAMPO_REVERSO = "Reverso"
 
 
+def borrar_notas(ids: list[int]) -> None:
+    """
+    Quita tarjetas por su id. Lo usa el aborto para dejar Anki como estaba
+    (ver bitacora.py): agregar_flashcards devuelve el id de cada tarjeta que
+    creo, y esos ids son lo unico que permite deshacerlo despues, porque una
+    tarjeta ya agregada no se distingue de las que el estudiante tenia.
+    """
+    if ids:
+        _llamar("deleteNotes", notes=list(ids))
+
+
 def agregar_flashcards(mazo: str, tarjetas: list[tuple[str, str]], tags: list[str] | None = None) -> list[int | None]:
     """
     Agrega las tarjetas de a una (no en un solo lote): verificado en vivo que

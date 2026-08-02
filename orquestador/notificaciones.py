@@ -15,6 +15,8 @@ import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
+from . import estado_vivo
+
 TERMINAL_NOTIFIER = "/opt/homebrew/bin/terminal-notifier"
 LOGS_DIR = Path(__file__).parent / "logs"
 ESTADO_PATH = Path(__file__).parent.parent / "Estado.txt"
@@ -61,11 +63,17 @@ def notificar_inicio(cantidad: int) -> None:
     )
 
 
-def notificar_progreso(etapa: str, detalle: str = "") -> None:
+def notificar_progreso(etapa: str, detalle: str = "", eta_segundos: float | None = None) -> None:
     """Aviso intermedio mientras avanza el procesamiento (transcribiendo,
     aplicando la skill). Mismo grupo que el resto: reemplaza al aviso
     anterior en el Centro de Notificaciones en vez de amontonarse, y sin
-    sonido para no interrumpir con cada paso."""
+    sonido para no interrumpir con cada paso.
+
+    Ademas actualiza el estado que lee el icono de la barra de menu. Se hace
+    aca y no con una llamada aparte en cada etapa para que no puedan quedar
+    desincronizados: toda etapa que ya avisaba, ahora tambien aparece en la
+    barra, sin tener que acordarse de agregarla en dos lugares."""
+    estado_vivo.paso(etapa, detalle, eta_segundos)
     _notificar(titulo="Procesando...", subtitulo=etapa, mensaje=detalle, sonido=False)
 
 

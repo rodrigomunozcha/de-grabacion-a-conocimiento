@@ -23,7 +23,7 @@ from pathlib import Path
 
 import anyio
 
-from . import lock
+from . import estado_vivo, lock
 from .config import PERFILES_WHISPER_VALIDOS, cargar_config, dir_pendientes
 from .deteccion import NOMBRES_DIA
 from .finalizar_clase import procesar_clase_reconocida
@@ -34,10 +34,19 @@ PERFIL_WHISPER_POR_DEFECTO = "es-chile"
 
 
 def _construir_trabajo_manual(
-    rutas_audio: list[Path], ramo: str, perfil_whisper: str, config: dict
+    rutas_audio: list[Path], ramo: str, perfil_whisper: str, config: dict,
+    fecha_forzada: date | None = None,
 ) -> dict:
+    """
+    `fecha_forzada` existe para las grabaciones antiguas con la fecha de
+    archivo corrupta. Pasar por AirDrop o por varias copias puede dejar el
+    mtime en 1970, y ese mtime es lo unico que hay para fechar la clase. Como
+    la fecha es el identificador permanente (va en el nombre del archivo y en
+    el titulo de la nota), conviene poder darla a mano en vez de archivar la
+    clase con una fecha que se sabe falsa.
+    """
     rutas_en_orden = sorted(rutas_audio, key=lambda p: p.stat().st_mtime)
-    fecha = date.fromtimestamp(rutas_en_orden[0].stat().st_mtime)
+    fecha = fecha_forzada or date.fromtimestamp(rutas_en_orden[0].stat().st_mtime)
     nombres = ",".join(p.name for p in rutas_en_orden)
     return {
         "clave": f"manual|{fecha.isoformat()}|{nombres}",
@@ -55,7 +64,8 @@ def _construir_trabajo_manual(
 
 
 async def procesar_grabacion_manual(
-    rutas_audio: list[str], ramo: str, perfil_whisper: str = PERFIL_WHISPER_POR_DEFECTO
+    rutas_audio: list[str], ramo: str, perfil_whisper: str = PERFIL_WHISPER_POR_DEFECTO,
+    fecha: str | None = None,
 ) -> Path:
     rutas_audio_path = [Path(r).expanduser().resolve() for r in rutas_audio]
     for ruta in rutas_audio_path:
@@ -66,7 +76,12 @@ async def procesar_grabacion_manual(
     lock_file = lock.adquirir_bloqueante()
     try:
         config = cargar_config()
-        trabajo = _construir_trabajo_manual(rutas_audio_path, ramo, perfil_whisper, config)
+        estado_vivo.iniciar(f"{ramo}")
+        estado_vivo.lanzar_visor()
+        trabajo = _construir_trabajo_manual(
+            rutas_audio_path, ramo, perfil_whisper, config,
+            date.fromisoformat(fecha) if fecha else None,
+        )
 
         print(f"Transcribiendo {len(rutas_audio_path)} archivo(s) (ramo: {ramo})...")
         texto = transcribir_trabajo(trabajo, config)
@@ -78,7 +93,12 @@ async def procesar_grabacion_manual(
         trabajo_metadata["archivo_texto"] = str(dir_pendientes() / f"{slug}.txt")
         trabajo_metadata["slug"] = slug
 
-        return await procesar_clase_reconocida(trabajo_metadata, config)
+        ruta_docx = await procesar_clase_reconocida(trabajo_metadata, config)
+        estado_vivo.terminar("Listo, revisa la carpeta Output")
+        return ruta_docx
+    except Exception:
+        estado_vivo.terminar("El procesamiento se interrumpió", error=True)
+        raise
     finally:
         lock.liberar(lock_file)
 
@@ -87,10 +107,23 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if len(args) < 2:
         print(
-            "Uso: python3 -m orquestador.procesar_manual <ramo> [perfil_whisper] -- "
-            "<ruta_audio1> [ruta_audio2 ...]"
+            "Uso: python3 -m orquestador.procesar_manual <ramo> [perfil_whisper] "
+            "[--fecha AAAA-MM-DD] -- <ruta_audio1> [ruta_audio2 ...]"
         )
         raise SystemExit(1)
+
+    # --fecha para grabaciones antiguas cuyo mtime quedo corrupto (ver
+    # _construir_trabajo_manual).
+    fecha_manual = None
+    if "--fecha" in args:
+        i = args.index("--fecha")
+        try:
+            fecha_manual = args[i + 1]
+            date.fromisoformat(fecha_manual)
+        except (IndexError, ValueError):
+            print("--fecha necesita una fecha valida en formato AAAA-MM-DD.")
+            raise SystemExit(1)
+        args = args[:i] + args[i + 2:]
 
     ramo = args[0]
     resto = args[1:]
@@ -106,5 +139,5 @@ if __name__ == "__main__":
         print("Falta indicar al menos una ruta de audio.")
         raise SystemExit(1)
 
-    ruta_docx = anyio.run(procesar_grabacion_manual, rutas, ramo, perfil)
+    ruta_docx = anyio.run(procesar_grabacion_manual, rutas, ramo, perfil, fecha_manual)
     print(f"Listo: {ruta_docx}")

@@ -16,14 +16,17 @@ completas igual (con un ramo elegido a mano), o ignorar el archivo.
 import json
 import shutil
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
+from . import estado_vivo
 from .config import cargar_config, dir_pendientes
 from .deteccion import construir_trabajos, marcar_emitido
 from .dialogo_no_reconocido import preguntar_que_hacer
 from .nombres import calcular_numero_clase_por_orden, slug_pendiente
 from .notificaciones import notificar_error, notificar_progreso
+from .uso import registrar_transcripcion
 
 PERFIL_WHISPER_POR_DEFECTO = "es-chile"
 
@@ -44,15 +47,23 @@ def transcribir_trabajo(trabajo: dict, config: dict) -> str:
     partes = []
     for i, ruta_audio in enumerate(archivos, start=1):
         detalle = f"Parte {i} de {len(archivos)}" if len(archivos) > 1 else trabajo["fecha"]
-        notificar_progreso("Transcribiendo audio", detalle)
+        # La transcripcion es la unica etapa cuyo tiempo si se puede estimar
+        # de antemano: depende de la duracion del audio, no del modelo.
+        duracion = estado_vivo.duracion_audio_segundos(ruta_audio)
+        eta = duracion / estado_vivo.velocidad_transcripcion() if duracion else None
+        notificar_progreso(estado_vivo.PASO_TRANSCRIBIR, detalle, eta)
+        comenzo = time.monotonic()
         texto, _, _ = transcribe(ruta_audio, language_profile=perfil, context_text=contexto)
+        # Con la medicion real, la estimacion de la proxima clase deja de
+        # depender de una constante escrita a mano (ver uso.py).
+        registrar_transcripcion(trabajo.get("clave", "?"), duracion, time.monotonic() - comenzo)
         if len(archivos) > 1:
             texto = f"--- Parte {i} ({Path(ruta_audio).name}) ---\n{texto}"
         partes.append(texto)
     return "\n\n".join(partes)
 
 
-def _guardar_pendiente(trabajo: dict, texto: str) -> None:
+def _guardar_pendiente(trabajo: dict, texto: str, bitacora=None) -> None:
     dir_pendientes().mkdir(parents=True, exist_ok=True)
     slug = slug_pendiente(trabajo["clave"])
     ruta_txt = dir_pendientes() / f"{slug}.txt"
@@ -61,9 +72,13 @@ def _guardar_pendiente(trabajo: dict, texto: str) -> None:
     metadata["archivos_originales"] = metadata.pop("archivos")
     metadata["archivo_texto"] = str(ruta_txt)
     metadata["slug"] = slug
-    (dir_pendientes() / f"{slug}.json").write_text(
+    ruta_json = dir_pendientes() / f"{slug}.json"
+    ruta_json.write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    if bitacora is not None:
+        bitacora.archivo_creado(ruta_txt)
+        bitacora.archivo_creado(ruta_json)
 
 
 def _guardar_sin_clasificar(trabajo: dict, texto: str, output_dir: str) -> None:
@@ -90,7 +105,7 @@ def _archivar_ignorado(trabajo: dict, config: dict) -> None:
         shutil.move(str(origen_path), str(destino))
 
 
-def procesar_pendientes(config: dict | None = None) -> list[dict]:
+def procesar_pendientes(config: dict | None = None, bitacora=None) -> list[dict]:
     if config is None:
         config = cargar_config()
 
@@ -129,7 +144,7 @@ def procesar_pendientes(config: dict | None = None) -> list[dict]:
         try:
             texto = transcribir_trabajo(trabajo, config)
             if trabajo["reconocido"]:
-                _guardar_pendiente(trabajo, texto)
+                _guardar_pendiente(trabajo, texto, bitacora)
             else:
                 _guardar_sin_clasificar(trabajo, texto, config["rutas"]["output"])
         except Exception as e:

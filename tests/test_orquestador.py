@@ -237,6 +237,113 @@ def probar_dialogo_nunca_descarta_solo() -> None:
           and "OPCION_SOLO_TRANSCRIBIR" in fuente)
 
 
+def probar_bitacora_deshace_todo() -> None:
+    """
+    El aborto promete dejar el disco como estaba. Si el deshacer falla, esa
+    promesa se rompe justo cuando el estudiante ya decidio cancelar, o sea en
+    el peor momento para descubrirlo.
+    """
+    print("\n== abortar deja todo como estaba ==")
+    from orquestador.bitacora import Bitacora
+
+    base = Path(tempfile.mkdtemp())
+    try:
+        # Estado inicial: una carpeta de ramo con una nota que ya existia.
+        vault = base / "vault" / "RAMO"
+        vault.mkdir(parents=True)
+        indice = vault / "indice.md"
+        indice.write_text("contenido original", encoding="utf-8")
+
+        entrada = base / "Input"
+        entrada.mkdir()
+        audio = entrada / "clase.m4a"
+        audio.write_bytes(b"audio")
+
+        b = Bitacora(base / "bitacora.json")
+
+        # Lo que hace una corrida.
+        b.fotografiar_carpeta(vault)
+        (vault / "Fuente - nueva.md").write_text("nota nueva", encoding="utf-8")
+        (vault / "Aprendizaje - nueva.md").write_text("otra nota", encoding="utf-8")
+        indice.write_text("contenido MODIFICADO por la skill", encoding="utf-8")
+
+        carpeta_nueva = base / "vault" / "RAMO RECIEN CREADO"
+        carpeta_nueva.mkdir()
+        b.carpeta_creada(carpeta_nueva)
+
+        docx = base / "salida.docx"
+        docx.write_bytes(b"docx")
+        b.archivo_creado(docx)
+
+        destino = base / "Procesados" / "clase archivada.m4a"
+        destino.parent.mkdir(parents=True)
+        b.audio_movido(audio, destino)
+        shutil.move(str(audio), str(destino))
+
+        check("durante la corrida el audio ya no esta en Input", not audio.exists())
+
+        # Abortar.
+        revertido = b.deshacer()
+
+        check("las notas nuevas se borraron",
+              not (vault / "Fuente - nueva.md").exists()
+              and not (vault / "Aprendizaje - nueva.md").exists())
+        check("la nota que ya existia sigue ahi", indice.is_file())
+        check("y con su contenido original",
+              indice.read_text(encoding="utf-8") == "contenido original",
+              indice.read_text(encoding="utf-8"))
+        check("la carpeta creada se elimino", not carpeta_nueva.exists())
+        check("el .docx se borro", not docx.exists())
+        check("el audio volvio a Input", audio.is_file() and not destino.exists())
+        check("el audio conserva su contenido", audio.read_bytes() == b"audio")
+        check("se informa lo que se revirtio", len(revertido) >= 4, str(revertido))
+        check("la bitacora se limpia al terminar", not (base / "bitacora.json").exists())
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def probar_bitacora_no_borra_lo_ajeno() -> None:
+    print("\n== abortar no toca lo que no puso el sistema ==")
+    from orquestador.bitacora import Bitacora
+
+    base = Path(tempfile.mkdtemp())
+    try:
+        carpeta = base / "RAMO"
+        carpeta.mkdir()
+        b = Bitacora(base / "b.json")
+        b.carpeta_creada(carpeta)
+        ajeno = carpeta / "algo mio.md"
+        ajeno.write_text("no es del sistema", encoding="utf-8")
+
+        b.deshacer()
+        check("una carpeta con algo dentro no se borra", carpeta.is_dir())
+        check("el archivo ajeno sigue intacto", ajeno.is_file())
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def probar_seccion_critica() -> None:
+    """Durante el movimiento del audio el aborto se encola, no se ignora."""
+    print("\n== el tramo delicado no se puede cortar por la mitad ==")
+    from orquestador import cancelacion
+
+    llego_al_final = False
+    try:
+        with cancelacion.seccion_critica():
+            check("mientras dura, el estado dice que no se puede interrumpir",
+                  cancelacion._seccion_critica.locked())
+            # Simula el pedido de aborto llegando justo aqui.
+            cancelacion._al_recibir_senal(15, None)
+            llego_al_final = True
+    except cancelacion.Abortado:
+        check("el aborto pedido adentro se aplica al salir, no se pierde", True)
+    else:
+        check("el aborto pedido adentro se aplica al salir, no se pierde", False)
+
+    check("el tramo se completo antes de abortar", llego_al_final)
+    check("el candado queda libre despues", not cancelacion._seccion_critica.locked())
+
+
 if __name__ == "__main__":
     probar_nombres()
     probar_deteccion()
@@ -245,6 +352,9 @@ if __name__ == "__main__":
     probar_aislamiento_del_ensayo()
     probar_archivado_no_destructivo()
     probar_dialogo_nunca_descarta_solo()
+    probar_bitacora_deshace_todo()
+    probar_bitacora_no_borra_lo_ajeno()
+    probar_seccion_critica()
 
     print()
     if fallos:

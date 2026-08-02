@@ -31,3 +31,12 @@ boton_app/*.app/
 
 # macOS
 .DS_Store
+
+# Binario del icono de la barra de menu: se compila con compilar_apps.sh,
+# mismo criterio que las apps (codigo fuente auditable, sin cuarentena).
+barra_menu/BarraEstado
+
+# Estado de la corrida en curso y respaldos del aborto: son de ejecucion.
+orquestador/estado_actual.json
+orquestador/bitacora_actual.json
+orquestador/respaldos_bitacora/
