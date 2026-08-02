@@ -4,19 +4,31 @@ esta en la tabla dia->ramo (ej. sabado, o cualquier dia fuera de lunes-viernes,
 o grabaciones corruptas con fecha antigua). Usa AppleScript via osascript,
 sin dependencias nuevas.
 
-El dialogo principal tiene un timeout de 10 minutos: si el estudiante no esta
-cerca del Mac para contestar, se trata igual que si hubiera elegido "Ignorar
-archivo" (verificado en vivo que "giving up after" funciona asi con
-"display dialog"). "choose from list" y el dialogo de texto (para elegir o
-escribir el ramo) no soportan "giving up after" (probado, da error de
-sintaxis), asi que esos esperan sin limite de tiempo: solo aparecen despues
-de que el estudiante ya eligio activamente "Transcribir y aplicar skills
-completas".
+El dialogo principal tiene un timeout de 10 minutos, pero vencerlo NO descarta
+la grabacion: se trata como "Solo transcribir", igual que cerrar la ventana o
+apretar Esc. Descartar exige un clic explicito en "Ignorar archivo".
 
-Ramos que no estan en el horario actual (ej. un ramo de intercambio en otro
-idioma) se pueden agregar a mano la primera vez: quedan
-guardados en config["ramos_adicionales"] para no tener que volver a escribirlos
-ni elegir el idioma de nuevo la proxima vez que aparezca ese mismo ramo.
+Antes no era asi, y costo una clase real. Una grabacion con fecha corrupta
+disparo este dialogo mientras el estudiante no estaba en el Mac; el timeout y
+el boton por defecto llevaban los dos a ignorar, asi que el audio se fue solo
+a Procesados/_Ignorados sin que nadie lo decidiera. El flujo entero de la app
+es "suelto la clase y me voy": que ese flujo termine descartando la clase en
+silencio es el peor comportamiento posible. Ahora lo unico que pasa sin
+intervencion es transcribir, que no destruye nada.
+
+"choose from list" y el dialogo de texto (para elegir o escribir el ramo) no
+soportan "giving up after" (probado, da error de sintaxis), asi que esos
+esperan sin limite de tiempo: solo aparecen despues de que el estudiante ya
+eligio activamente "Transcribir y aplicar skills completas".
+
+Ramos que no estan en el horario actual se pueden agregar a mano la primera
+vez y quedan guardados en config["ramos_adicionales"]. Sirve para dos casos
+distintos que aca son el mismo: un ramo del semestre actual que no esta en la
+tabla dia->ramo, y un ramo de un semestre ya cursado cuyas grabaciones se
+procesan despues. En ambos, las clases se numeran por orden cronologico entre
+las ya archivadas de ese ramo, no por semana de semestre (ver
+transcripcion.py), asi que se pueden procesar en cualquier orden y la
+numeracion se acomoda sola.
 """
 import re
 import subprocess
@@ -30,7 +42,10 @@ OPCION_APLICAR_SKILLS = "Transcribir y aplicar skills completas"
 OPCION_IGNORAR = "Ignorar archivo"
 OPCIONES = [OPCION_SOLO_TRANSCRIBIR, OPCION_APLICAR_SKILLS, OPCION_IGNORAR]
 
-OPCION_RAMO_NUEVO = "Otro (ramo nuevo)..."
+# Cubre tanto un ramo del semestre actual que no esta en el horario como uno
+# de un semestre ya cursado. El texto lo dice explicitamente porque "ramo
+# nuevo" a secas hacia dudar de si servia para grabaciones antiguas.
+OPCION_RAMO_NUEVO = "Otro ramo (actual o de un semestre anterior)..."
 
 
 def _escapar(texto: str) -> str:
@@ -48,7 +63,9 @@ def _mostrar_dialogo_principal(trabajo: dict) -> str | None:
     script = (
         f"display dialog {_escapar(mensaje)} "
         f"buttons {{{lista_botones}}} "
-        f"default button {_escapar(OPCION_IGNORAR)} "
+        # El boton por defecto es el que se activa al apretar Enter sin mirar.
+        # Nunca puede ser el que descarta la clase.
+        f"default button {_escapar(OPCION_SOLO_TRANSCRIBIR)} "
         f'with title "Grabacion sin clasificar" '
         f"giving up after {TIMEOUT_DIALOGO_SEGUNDOS}"
     )
@@ -135,15 +152,23 @@ def _elegir_ramo(config: dict) -> tuple[str, str, str] | None:
 
 
 def preguntar_que_hacer(trabajo: dict, config: dict) -> dict:
+    """
+    Descartar una grabacion solo ocurre si el estudiante lo pide explicitamente.
+    Cualquier otro final (timeout, Esc, cerrar la ventana, o arrepentirse a
+    mitad de elegir el ramo) cae en "solo_transcribir": se guarda el texto en
+    Output/Sin clasificar y no se pierde nada. Ver el encabezado del modulo.
+    """
     boton = _mostrar_dialogo_principal(trabajo)
 
-    if boton == OPCION_SOLO_TRANSCRIBIR:
-        return {"accion": "solo_transcribir"}
+    if boton == OPCION_IGNORAR:
+        return {"accion": "ignorar"}
 
     if boton == OPCION_APLICAR_SKILLS:
         seleccion = _elegir_ramo(config)
         if seleccion is None:
-            return {"accion": "ignorar"}
+            # Abandono a mitad de elegir el ramo. Antes esto descartaba la
+            # grabacion, que es mucho mas de lo que el estudiante pidio.
+            return {"accion": "solo_transcribir"}
         ramo, perfil_whisper, contexto = seleccion
         return {
             "accion": "aplicar_skills",
@@ -152,4 +177,4 @@ def preguntar_que_hacer(trabajo: dict, config: dict) -> dict:
             "contexto": contexto,
         }
 
-    return {"accion": "ignorar"}
+    return {"accion": "solo_transcribir"}

@@ -193,6 +193,50 @@ def probar_archivado_no_destructivo() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_dialogo_nunca_descarta_solo() -> None:
+    """
+    Descartar una grabacion tiene que costar un clic explicito. Esto ya fallo
+    una vez con una clase real: el timeout y el boton por defecto llevaban los
+    dos a ignorar, y el audio se archivo solo mientras nadie miraba.
+    """
+    print("\n== el dialogo nunca descarta por su cuenta ==")
+    from orquestador import dialogo_no_reconocido as dlg
+
+    original = dlg._mostrar_dialogo_principal
+    casos = [
+        ("timeout o ventana cerrada", None, "solo_transcribir"),
+        ("clic explicito en Ignorar", dlg.OPCION_IGNORAR, "ignorar"),
+        ("clic en Solo transcribir", dlg.OPCION_SOLO_TRANSCRIBIR, "solo_transcribir"),
+    ]
+    try:
+        for nombre, respuesta, esperado in casos:
+            dlg._mostrar_dialogo_principal = lambda _t, _r=respuesta: _r
+            accion = dlg.preguntar_que_hacer({"archivos": [], "fecha": "1970-01-20",
+                                              "dia_semana": "martes"}, {})["accion"]
+            check(f"{nombre} -> {esperado}", accion == esperado, f"dio '{accion}'")
+
+        # Abandonar a mitad de elegir el ramo tampoco puede descartar.
+        dlg._mostrar_dialogo_principal = lambda _t: dlg.OPCION_APLICAR_SKILLS
+        original_ramo = dlg._elegir_ramo
+        dlg._elegir_ramo = lambda _c: None
+        try:
+            accion = dlg.preguntar_que_hacer({"archivos": [], "fecha": "1970-01-20",
+                                              "dia_semana": "martes"}, {})["accion"]
+            check("abandonar la eleccion de ramo -> solo_transcribir",
+                  accion == "solo_transcribir", f"dio '{accion}'")
+        finally:
+            dlg._elegir_ramo = original_ramo
+
+    finally:
+        dlg._mostrar_dialogo_principal = original
+
+    import inspect
+    fuente = inspect.getsource(original)
+    check("el boton por defecto del dialogo no es el que descarta",
+          "default button {_escapar(OPCION_IGNORAR)}" not in fuente
+          and "OPCION_SOLO_TRANSCRIBIR" in fuente)
+
+
 if __name__ == "__main__":
     probar_nombres()
     probar_deteccion()
@@ -200,6 +244,7 @@ if __name__ == "__main__":
     probar_docx()
     probar_aislamiento_del_ensayo()
     probar_archivado_no_destructivo()
+    probar_dialogo_nunca_descarta_solo()
 
     print()
     if fallos:
