@@ -237,3 +237,42 @@ def a_latex(texto: str) -> str:
     # Las palabras sueltas se escriben derechas, no en cursiva matematica.
     texto = re.sub(r"(?<![\\{])\b([A-Za-zÁÉÍÓÚáéíóúÑñ]{3,})\b", r"\\mathrm{\1}", texto)
     return texto
+
+
+# Subindices y superindices escritos en medio de una frase, SIN delimitadores.
+# Solo las formas con parentesis o llaves, y el superindice de un caracter:
+# son notaciones que no aparecen en texto normal, asi que se pueden reconocer
+# sin riesgo. El subindice de un caracter suelto (`_x`) queda fuera a proposito,
+# porque destrozaria cualquier palabra con guion bajo (`archivo_de_prueba`).
+_PATRON_EVIDENTE = re.compile(
+    r"(_\{[^}]*\}|_\([^)]*\)|\^\{[^}]*\}|\^\([^)]*\)|\^[^\s_^{}()])"
+)
+
+
+def tiene_matematica_evidente(texto: str) -> bool:
+    return bool(_PATRON_EVIDENTE.search(texto))
+
+
+def escribir_prosa_con_matematica(paragraph, texto: str, negrita: bool = False) -> None:
+    """
+    Escribe texto normal aplicando subindices y superindices donde la notacion
+    los pide, sin necesidad de delimitadores.
+
+    Hace falta porque el modelo mete formulas dentro de las frases sin marcarlas
+    ("el valor critico que se busca en tabla (z_(1-α/2) o t_(n-1, 1-α/2))"), y
+    pedirle que las delimite ya fallo dos veces. Reconocerlas aca es mas seguro
+    que confiar en que se acuerde.
+    """
+    for parte in _PATRON_EVIDENTE.split(texto):
+        if not parte:
+            continue
+        if parte[0] in ("_", "^"):
+            contenido = parte[1:]
+            if contenido[:1] in ("{", "("):
+                contenido = contenido[1:-1]
+            run = paragraph.add_run(contenido)
+            run.font.subscript = parte[0] == "_"
+            run.font.superscript = parte[0] == "^"
+        else:
+            run = paragraph.add_run(parte)
+        run.bold = negrita

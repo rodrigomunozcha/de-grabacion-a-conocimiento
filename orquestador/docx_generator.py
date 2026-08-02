@@ -61,16 +61,16 @@ def _agregar_texto_con_negritas(paragraph, texto: str) -> None:
         if not parte:
             continue
         if parte.startswith("**") and parte.endswith("**"):
-            run = paragraph.add_run(parte[2:-2])
-            run.bold = True
+            formulas.escribir_prosa_con_matematica(paragraph, parte[2:-2], negrita=True)
         else:
-            # Dentro del texto normal todavia puede haber formulas cortas
-            # ($x̄$), que necesitan subindices de verdad (ver formulas.py).
+            # El texto puede traer formulas cortas delimitadas ($x̄$) y tambien
+            # subindices sueltos en medio de la frase, sin delimitar, que es lo
+            # que el modelo escribe en la practica (ver formulas.py).
             for trozo, es_formula in formulas.partir_por_formulas_inline(parte):
                 if es_formula:
                     formulas.escribir_en_parrafo(paragraph, trozo)
                 elif trozo:
-                    paragraph.add_run(trozo)
+                    formulas.escribir_prosa_con_matematica(paragraph, trozo)
 
 
 def _quitar_frontmatter(md_texto: str) -> str:

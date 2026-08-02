@@ -492,6 +492,39 @@ def probar_formulas_en_tablas() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_matematica_dentro_de_frases() -> None:
+    """
+    El modelo mete formulas en medio de las frases sin delimitarlas. Pedirle
+    que las marque ya fallo, asi que se reconocen solas, pero sin arrastrar
+    palabras normales que llevan guion bajo.
+    """
+    print("\n== subindices en medio de una frase ==")
+    from docx import Document as Doc
+    from orquestador.docx_generator import _agregar_texto_con_negritas
+
+    doc = Doc()
+    p = doc.add_paragraph()
+    _agregar_texto_con_negritas(
+        p, "el valor crítico que se busca en tabla (z_(1-α/2) o t_(n-1, 1-α/2))")
+    subs = [r.text for r in p.runs if r.font.subscript]
+    check("los dos subindices se aplican", subs == ["1-α/2", "n-1, 1-α/2"], str(subs))
+    check("ya no queda la notacion cruda", "_(" not in p.text, p.text)
+
+    # Lo que NO debe tocarse.
+    for texto in ("El archivo_de_prueba.txt quedó guardado",
+                  "usa snake_case para nombrar variables"):
+        p2 = doc.add_paragraph()
+        _agregar_texto_con_negritas(p2, texto)
+        check(f"no toca '{texto[:22]}...'",
+              not [r for r in p2.runs if r.font.subscript] and p2.text == texto)
+
+    # La negrita convive con la matematica.
+    p3 = doc.add_paragraph()
+    _agregar_texto_con_negritas(p3, "usa **z_(α/2)** para el margen")
+    check("negrita y subindice a la vez",
+          any(r.bold and r.font.subscript for r in p3.runs))
+
+
 def probar_mapa_y_secciones() -> None:
     """El mapa se dibuja de verdad, y la sesion por bloques de tiempo cede su
     lugar en el .docx a la materia ya digerida."""
@@ -585,6 +618,7 @@ if __name__ == "__main__":
     probar_formulas()
     probar_contexto_va_primero()
     probar_formulas_en_tablas()
+    probar_matematica_dentro_de_frases()
     probar_mapa_y_secciones()
     probar_aviso_anki()
 
