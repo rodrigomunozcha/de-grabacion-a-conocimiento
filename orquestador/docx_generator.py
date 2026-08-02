@@ -105,6 +105,24 @@ def _celdas_de_fila(linea: str) -> list[str]:
     return [c.strip() for c in interior.split("|")]
 
 
+def _escribir_celda(celda, texto: str) -> None:
+    """
+    Una celda que es toda una formula se dibuja; el resto va como texto con
+    negritas y subindices.
+
+    Antes esto era `celda.text = texto`, o sea texto plano sin ningun formato.
+    La tabla de "que formula uso en cada caso" es justo donde mas formulas hay,
+    y era el unico lugar del documento donde se veian crudas, con el guion bajo
+    y los parentesis a la vista.
+    """
+    limpio = texto.strip()
+    if formulas.parece_solo_formula(limpio):
+        crudo = limpio[1:-1] if limpio.startswith("$") and limpio.endswith("$") else limpio
+        if formulas.agregar_formula_en_celda(celda, crudo):
+            return
+    _agregar_texto_con_negritas(celda.paragraphs[0], texto)
+
+
 def _agregar_tabla_markdown(doc: Document, filas: list[list[str]]) -> None:
     if not filas:
         return
@@ -121,7 +139,7 @@ def _agregar_tabla_markdown(doc: Document, filas: list[list[str]]) -> None:
     for fila in resto:
         celdas = tabla.add_row().cells
         for celda, texto in zip(celdas, fila):
-            celda.text = texto
+            _escribir_celda(celda, texto)
 
 
 def _leer_bloque_cercado(lineas: list[str], i: int) -> tuple[str, int]:

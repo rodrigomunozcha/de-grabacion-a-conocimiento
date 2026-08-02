@@ -210,6 +210,15 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      Para símbolos sueltos dentro de una frase, escribe Unicode directo (σ, μ,
      √, ±, x̄, p̂, Σ, ≈), que se lee bien en el renglón. Si necesitas un
      subíndice dentro de una frase, ponlo entre `$` con la forma `s^{2}`.
+
+     **Dentro de tablas.** Una celda cuyo contenido es una fórmula también se
+     dibuja, así que escríbela entre `$` y en LaTeX, igual que las demás:
+
+     ```
+     | Situación | Fórmula |
+     |---|---|
+     | Conozco σ | $\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}$ |
+     ```
    - Como última línea de tu respuesta de texto (sin nada más en esa línea, JSON
      válido en una sola línea):
      `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "contexto": "<ruta completa de la nota de contexto previo, o cadena vacia si no hacia falta>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total]}`

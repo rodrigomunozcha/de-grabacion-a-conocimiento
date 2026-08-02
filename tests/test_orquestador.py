@@ -440,6 +440,58 @@ def probar_contexto_va_primero() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_formulas_en_tablas() -> None:
+    """
+    Las celdas se escribian como texto plano, asi que la tabla de "que formula
+    uso en cada caso" era el unico lugar del documento donde las formulas se
+    veian crudas, con el guion bajo y los parentesis a la vista.
+    """
+    print("\n== formulas dentro de tablas ==")
+    from docx import Document as Doc
+    from orquestador import formulas
+
+    check("una celda que es toda formula se reconoce",
+          formulas.parece_solo_formula("x̄ ± z_(1-α/2)·σ/√n"))
+    check("una celda de texto normal no se confunde con formula",
+          not formulas.parece_solo_formula(
+              "Quiero estimar μ y conozco σ (dato del enunciado)"))
+
+    # El modelo no siempre escribe LaTeX: hay que entender su Unicode.
+    latex = formulas.a_latex("p̂ ± z_(1-α/2)·√(p̂q̂/n)")
+    check("el sombrero Unicode pasa a LaTeX", r"\hat{p}" in latex, latex)
+    check("la raiz Unicode pasa a LaTeX", r"\sqrt{" in latex, latex)
+    check("el subindice con parentesis pasa a llaves", "_{1-" in latex, latex)
+    check("lo que ya viene en LaTeX no se toca",
+          formulas.a_latex(r"\bar{x} \pm \sigma") == r"\bar{x} \pm \sigma")
+
+    md = (
+        "| Situación | Fórmula |\n"
+        "|---|---|\n"
+        "| Conozco σ, muestra grande | x̄ ± z_(1-α/2)·σ/√n |\n"
+    )
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", "", "# A\n\n" + md, [], {"rutas": {"output": str(tmp)}}, "",
+        )
+        doc = Doc(str(ruta))
+        marca = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}inline"
+        imagenes_en_celdas = sum(
+            len(p._p.findall(f".//{marca}"))
+            for t in doc.tables for f in t.rows for c in f.cells for p in c.paragraphs
+        )
+        check("la formula de la celda se dibuja", imagenes_en_celdas == 1,
+              f"imagenes={imagenes_en_celdas}")
+        textos = [c.text for t in doc.tables for f in t.rows for c in f.cells]
+        check("ya no queda la formula cruda en el texto",
+              not any("z_(1-" in x for x in textos), str(textos))
+        check("la celda de texto normal sigue siendo texto",
+              any("Conozco σ" in x for x in textos), str(textos))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def probar_mapa_y_secciones() -> None:
     """El mapa se dibuja de verdad, y la sesion por bloques de tiempo cede su
     lugar en el .docx a la materia ya digerida."""
@@ -532,6 +584,7 @@ if __name__ == "__main__":
     probar_seccion_critica()
     probar_formulas()
     probar_contexto_va_primero()
+    probar_formulas_en_tablas()
     probar_mapa_y_secciones()
     probar_aviso_anki()
 
