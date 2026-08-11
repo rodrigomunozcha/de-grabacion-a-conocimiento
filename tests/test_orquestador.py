@@ -868,6 +868,62 @@ def probar_audio_largo_se_corta_solo() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_el_borrado_no_alcanza_tus_carpetas() -> None:
+    """
+    Cortar el audio en trozos implica borrarlos despues, y ese es el unico
+    borrado que el sistema hace solo. Se prueba que NO PUEDA tocar otra cosa,
+    no que "normalmente no la toque": perder grabaciones o notas de clase no
+    tiene vuelta atras.
+    """
+    print("\n== el borrado de trozos no puede alcanzar nada mas ==")
+    import tempfile as tf
+
+    from orquestador import transcripcion as tr
+
+    # 1. Solo borra carpetas creadas por el sistema, dentro del area temporal.
+    propia = Path(tf.mkdtemp(prefix=tr.PREFIJO_TROZOS))
+    (propia / "trozo.m4a").write_bytes(b"x")
+    tr._borrar_carpeta_de_trozos(propia)
+    check("borra su propia carpeta temporal", not propia.exists())
+
+    # 2. Una carpeta temporal ajena (otro prefijo) no se toca.
+    ajena = Path(tf.mkdtemp(prefix="algo_del_usuario_"))
+    try:
+        (ajena / "importante.md").write_text("no borrar", encoding="utf-8")
+        tr._borrar_carpeta_de_trozos(ajena)
+        check("no toca una carpeta temporal con otro nombre", ajena.exists())
+    finally:
+        shutil.rmtree(ajena, ignore_errors=True)
+
+    # 3. Aunque el nombre calce, fuera del area temporal no se borra.
+    fuera = Path(tf.mkdtemp()) / f"{tr.PREFIJO_TROZOS}falsa"
+    fuera.mkdir(parents=True)
+    simulada = fuera.parent / "Procesados"
+    simulada.mkdir()
+    (simulada / "clase.m4a").write_bytes(b"grabacion real")
+    try:
+        for objetivo in (Path.home() / "Documents", simulada, Path("/")):
+            tr._borrar_carpeta_de_trozos(objetivo)
+        check("no borra Documents, ni Procesados, ni la raiz",
+              (Path.home() / "Documents").exists() and (simulada / "clase.m4a").exists())
+    finally:
+        shutil.rmtree(fuera.parent, ignore_errors=True)
+
+    # 4. La ruta del audio original nunca entra en la carpeta de trozos.
+    import inspect
+    fuente = inspect.getsource(tr._transcribir_archivo)
+    check("los trozos se crean en una carpeta temporal recien hecha",
+          "tempfile.mkdtemp(prefix=PREFIJO_TROZOS)" in fuente)
+    # Se mira el codigo, no la documentacion: el docstring justamente explica
+    # que no se usa glob, y buscar la palabra ahi daba un falso positivo.
+    cuerpo = inspect.getsource(tr._borrar_carpeta_de_trozos)
+    cuerpo = cuerpo.split('"""')[-1]
+    check("no se borra por patron ni comodin",
+          "glob" not in cuerpo and "*" not in cuerpo, cuerpo.strip()[:60])
+    check("se comprueba el area temporal antes de borrar",
+          "gettempdir" in cuerpo and "is_relative_to" in cuerpo)
+
+
 def probar_aviso_anki() -> None:
     print("\n== aviso cuando Anki esta cerrado ==")
     from orquestador import anki_connect, dialogo_anki
@@ -920,6 +976,7 @@ if __name__ == "__main__":
     probar_canales_de_enfasis()
     probar_parrafos_y_justificado()
     probar_audio_largo_se_corta_solo()
+    probar_el_borrado_no_alcanza_tus_carpetas()
     probar_aviso_anki()
 
     print()

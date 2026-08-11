@@ -89,8 +89,44 @@ MINIMO_ABSOLUTO = 200
 # esta probado y 35 deja pasar directo a las clases cortas. Cortar de mas no
 # cuesta casi nada (la copia es sin recodificar, segundos) y ademas da un
 # avance visible mas fino en el icono de la barra.
+PREFIJO_TROZOS = "trozos_"
 UMBRAL_PARTIR_SEGUNDOS = 35 * 60
 DURACION_TROZO_SEGUNDOS = 20 * 60
+
+
+def _borrar_carpeta_de_trozos(carpeta: Path) -> None:
+    """
+    Borra la carpeta temporal de trozos, y solo esa.
+
+    Este es el unico borrado que hace el sistema por su cuenta, asi que se
+    escribe para que NO PUEDA alcanzar otra cosa, en vez de para que "no
+    deberia":
+
+    1. La carpeta la crea `tempfile.mkdtemp()` en el area temporal del sistema,
+       con un nombre unico e irrepetible. No es una carpeta del estudiante:
+       Input, Procesados y el vault estan fuera de su alcance por construccion.
+    2. No se borra por patron ni por nombre. No hay glob, ni comodines, ni
+       nombres armados con datos del audio. Se borra exactamente la ruta que
+       este mismo modulo acaba de crear y tiene en una variable. Un patron es
+       la forma en que estos borrados se vuelven catastroficos.
+    3. Antes de borrar se comprueba que la ruta siga estando dentro del area
+       temporal del sistema y conserve el prefijo con el que se creo. Si algo
+       no calza, no se borra nada y se sigue: una carpeta temporal de sobra no
+       le hace dano a nadie.
+    4. El audio original nunca esta aca adentro. Los trozos son copias; el
+       original se lee y se archiva despues, intacto.
+    """
+    try:
+        resuelta = carpeta.resolve()
+        raiz_temporal = Path(tempfile.gettempdir()).resolve()
+        dentro_del_area_temporal = (
+            resuelta != raiz_temporal and resuelta.is_relative_to(raiz_temporal)
+        )
+        if not (dentro_del_area_temporal and resuelta.name.startswith(PREFIJO_TROZOS)):
+            return
+        shutil.rmtree(resuelta, ignore_errors=True)
+    except Exception:
+        pass  # no borrar nunca puede costar mas que no limpiar
 
 
 def _partir_audio(ruta_audio: str, carpeta: Path) -> list[Path]:
@@ -121,7 +157,7 @@ def _transcribir_archivo(transcribe, ruta_audio: str, perfil: str, contexto: str
         _verificar_parte(texto, ruta_audio, duracion)
         return texto
 
-    temporal = Path(tempfile.mkdtemp(prefix="trozos_"))
+    temporal = Path(tempfile.mkdtemp(prefix=PREFIJO_TROZOS))
     try:
         trozos = _partir_audio(ruta_audio, temporal)
         piezas = []
@@ -137,7 +173,7 @@ def _transcribir_archivo(transcribe, ruta_audio: str, perfil: str, contexto: str
             piezas.append(texto.strip())
         return "\n".join(piezas)
     finally:
-        shutil.rmtree(temporal, ignore_errors=True)
+        _borrar_carpeta_de_trozos(temporal)
 
 
 def _verificar_parte(texto: str, ruta_audio: str, duracion_s: float | None) -> None:
