@@ -51,3 +51,6 @@ orquestador/respaldos_bitacora/
 
 # Respaldo de notas antes de rehacer una clase: contienen material real
 orquestador/respaldo_notas/
+
+# Skill de terceros clonada aparte: tiene su propio repositorio.
+last30days-skill/
