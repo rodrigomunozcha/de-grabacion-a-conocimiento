@@ -63,7 +63,8 @@ def notificar_inicio(cantidad: int) -> None:
     )
 
 
-def notificar_progreso(etapa: str, detalle: str = "", eta_segundos: float | None = None) -> None:
+def notificar_progreso(etapa: str, detalle: str = "", eta_segundos: float | None = None,
+                       sub: tuple[int, int] | None = None) -> None:
     """Aviso intermedio mientras avanza el procesamiento (transcribiendo,
     aplicando la skill). Mismo grupo que el resto: reemplaza al aviso
     anterior en el Centro de Notificaciones en vez de amontonarse, y sin
@@ -73,7 +74,7 @@ def notificar_progreso(etapa: str, detalle: str = "", eta_segundos: float | None
     aca y no con una llamada aparte en cada etapa para que no puedan quedar
     desincronizados: toda etapa que ya avisaba, ahora tambien aparece en la
     barra, sin tener que acordarse de agregarla en dos lugares."""
-    estado_vivo.paso(etapa, detalle, eta_segundos)
+    estado_vivo.paso(etapa, detalle, eta_segundos, sub)
     _notificar(titulo="Procesando...", subtitulo=etapa, mensaje=detalle, sonido=False)
 
 

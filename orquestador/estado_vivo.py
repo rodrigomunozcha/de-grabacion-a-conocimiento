@@ -183,10 +183,17 @@ def iniciar(clase: str = "") -> None:
     })
 
 
-def paso(etapa: str, detalle: str = "", eta_segundos: float | None = None) -> None:
-    """Marca en que paso va la corrida. `etapa` deberia ser una de las
-    constantes PASO_*; si no esta en la lista, igual se muestra pero sin
-    numero de paso."""
+def paso(etapa: str, detalle: str = "", eta_segundos: float | None = None,
+         sub: tuple[int, int] | None = None) -> None:
+    """
+    Marca en que paso va la corrida. `etapa` deberia ser una de las constantes
+    PASO_*; si no esta en la lista, igual se muestra pero sin numero de paso.
+
+    `sub` es el avance DENTRO de un paso, como (2, 6) para "va en el segundo de
+    seis tramos de audio". Existe porque el icono decia "1/5" durante media
+    hora seguida mientras por dentro avanzaba tramo a tramo: se veia igual de
+    quieto que si estuviera colgado.
+    """
     estado = _leer()
     if not estado:
         return
@@ -199,6 +206,8 @@ def paso(etapa: str, detalle: str = "", eta_segundos: float | None = None) -> No
         "detalle": detalle,
         "inicio_paso": time.time(),
         "eta_segundos": eta_segundos,
+        "subpaso": sub[0] if sub else None,
+        "subtotal": sub[1] if sub else None,
     })
     _escribir(estado)
 

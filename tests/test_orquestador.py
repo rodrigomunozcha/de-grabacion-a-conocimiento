@@ -573,53 +573,297 @@ def probar_mapa_y_secciones() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def probar_puntos_a_verificar() -> None:
+def probar_llamados_a_la_accion() -> None:
     """
-    El revisor era la segunda etapa mas cara y su resultado terminaba en un
-    JSON que nadie abria. Ahora se muestra, y tiene que ir ANTES del contenido:
-    saber que mirar con cuidado solo sirve antes de leer.
-    """
-    print("\n== puntos a verificar, al inicio del documento ==")
-    from docx import Document as Doc
-    from orquestador.revisor import hallazgos_para_avisar
+    La primera seccion del documento: lo que el profesor pidio.
 
-    revision = {"hallazgos": [
-        {"gravedad": "alta", "donde": "Aprendizaje, concepto 3", "problema": "GRAVE_SIN_RESPALDO"},
-        {"gravedad": "media", "donde": "Fuente, resumen", "problema": "MEDIO_A_VERIFICAR"},
-    ]}
-    check("si se corrigio lo grave, solo se avisa lo que quedo",
-          [h["problema"] for h in hallazgos_para_avisar(revision, se_corrigio=True)]
-          == ["MEDIO_A_VERIFICAR"])
-    check("si no se corrigio, lo grave tambien se avisa",
-          len(hallazgos_para_avisar(revision, se_corrigio=False)) == 2)
+    Es la parte con mas riesgo del sistema, porque es la que el estudiante mas
+    va a creer y la que decide que estudia. Por eso se prueba que la cita
+    textual siempre viaje con el punto, que lo dudoso se avise, y que la
+    seccion aparezca incluso vacia: "no hubo anuncios" y "el sistema no los
+    detecto" no se pueden confundir.
+    """
+    print("\n== lo que el profesor pidio, al inicio del documento ==")
+    from docx import Document as Doc
+
+    llamados = {
+        "avisos": [
+            {"que": "AVISO_TRABAJO", "cuando": "la proxima semana",
+             "textual": "CITA_DEL_TRABAJO", "seguro": True},
+            {"que": "AVISO_DUDOSO", "cuando": "", "textual": "CITA_DUDOSA",
+             "seguro": False},
+        ],
+        "evaluacion": [
+            {"tema": "TEMA_QUE_ENTRA", "textual": "CITA_DE_LA_PRUEBA", "seguro": True},
+        ],
+    }
 
     tmp = Path(tempfile.mkdtemp())
     try:
         ruta = docx_generator.generar_docx(
             {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
             "T", "# F\ntexto", "# A\ntexto", [{"concepto": "C", "por_que": "p"}],
-            {"rutas": {"output": str(tmp)}}, "# Contexto\nprevio",
-            hallazgos_para_avisar(revision, se_corrigio=True),
+            {"rutas": {"output": str(tmp)}}, "# Contexto\nprevio", llamados,
         )
         doc = Doc(str(ruta))
         encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
-        check("aparece la seccion", any("puntos a verificar" in h.lower() for h in encabezados))
-        check("va antes del contexto previo",
-              next(i for i, h in enumerate(encabezados) if "verificar" in h.lower())
-              < next(i for i, h in enumerate(encabezados) if "Antes de empezar" in h))
-
         texto = "\n".join(p.text for p in doc.paragraphs)
-        check("dice exactamente que esta raro", "MEDIO_A_VERIFICAR" in texto)
-        check("dice donde", "Fuente, resumen" in texto)
 
-        # Sin hallazgos no se pone nada: no hay por que alarmar sin motivo.
+        check("aparece la seccion", any("profesor pidió" in h for h in encabezados))
+        check("va antes que todo lo demas",
+              next(i for i, h in enumerate(encabezados) if "profesor pidió" in h)
+              < next(i for i, h in enumerate(encabezados) if "Antes de empezar" in h))
+        check("lo que entra en evaluacion tiene su propia subseccion",
+              any("entra en evaluación" in h for h in encabezados))
+
+        check("el aviso esta", "AVISO_TRABAJO" in texto)
+        check("con su fecha, como la dijo el profe", "la proxima semana" in texto)
+        check("y con la cita textual", "CITA_DEL_TRABAJO" in texto)
+        check("lo que entra en la prueba esta", "TEMA_QUE_ENTRA" in texto)
+        check("con su cita", "CITA_DE_LA_PRUEBA" in texto)
+        check("lo dudoso viene avisado",
+              "AVISO_DUDOSO" in texto and "no permite estar seguro" in texto)
+
+        # Sin anuncios la seccion sigue estando, con una linea que lo dice.
         r2 = docx_generator.generar_docx(
             {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
-            "T2", "", "# A\ntexto", [], {"rutas": {"output": str(tmp)}}, "", [],
+            "T2", "", "# A\ntexto", [], {"rutas": {"output": str(tmp)}}, "", None,
         )
-        check("sin hallazgos la seccion no aparece",
-              not any("verificar" in p.text.lower() for p in Doc(str(r2)).paragraphs
-                      if p.style.name.startswith("Heading")))
+        doc2 = Doc(str(r2))
+        texto2 = "\n".join(p.text for p in doc2.paragraphs)
+        check("sin anuncios la seccion no desaparece",
+              any("profesor pidió" in p.text for p in doc2.paragraphs
+                  if p.style.name.startswith("Heading")))
+        check("y dice explicitamente que no hubo", "no anunció" in texto2)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_documento_no_se_repite() -> None:
+    """
+    El documento llego a tener 33 paginas contando la misma materia cuatro
+    veces. Contar lo mismo varias veces no refuerza: desplaza a lo que si
+    rinde (ver references/diseno-documento.md). Esto comprueba los tres cortes
+    que lo dejaron en un tercio.
+    """
+    print("\n== el documento no cuenta lo mismo dos veces ==")
+    from docx import Document as Doc
+
+    # Nota con la estructura vieja: los pasos 1, 2 y 5 por separado.
+    aprendizaje = (
+        "---\nramo: R\n---\n\n"
+        "# Aprendizaje - Titulo Largo Del Archivo\n\n"
+        "## 1. Conceptos centrales\nCONCEPTOS_REPETIDOS_TRES_VECES\n\n"
+        "## 2. Que dominar para enseñarlo desde cero\nOTRA_VEZ_LO_MISMO\n\n"
+        "## 3. Diez preguntas para ponerme a prueba\nLAS_PREGUNTAS\n\n"
+        "## 4. Respuestas modelo\nLAS_RESPUESTAS\n\n"
+        "## 5. Materia lista para estudiar\nLA_MATERIA_DESARROLLADA\n\n"
+        "## 6. Kit de repaso\nEL_KIT\n"
+    )
+    fuente = (
+        "# Fuente - Titulo Largo Del Archivo\n\n"
+        "## Resumen\nRESUMEN_CRONOLOGICO\n\n"
+        "## Desarrollo\nLA_CLASE_OTRA_VEZ_EN_ORDEN\n\n"
+        "## Definiciones y ejemplos del profe\nLAS_DEFINICIONES\n\n"
+        "## Huecos y dudas\nLOS_HUECOS\n"
+    )
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", fuente, aprendizaje, [], {"rutas": {"output": str(tmp)}}, "", None,
+        )
+        doc = Doc(str(ruta))
+        texto = "\n".join(p.text for p in doc.paragraphs)
+        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+
+        check("la materia desarrollada se queda", "LA_MATERIA_DESARROLLADA" in texto)
+        check("las dos versiones que la repetian se van",
+              "CONCEPTOS_REPETIDOS_TRES_VECES" not in texto
+              and "OTRA_VEZ_LO_MISMO" not in texto)
+        check("el desarrollo cronologico se va",
+              "LA_CLASE_OTRA_VEZ_EN_ORDEN" not in texto
+              and "RESUMEN_CRONOLOGICO" not in texto)
+        check("las definiciones y los huecos se quedan",
+              "LAS_DEFINICIONES" in texto and "LOS_HUECOS" in texto)
+
+        check("primero la materia y despues las preguntas",
+              texto.index("LA_MATERIA_DESARROLLADA") < texto.index("LAS_PREGUNTAS"))
+        check("y las respuestas despues de las preguntas",
+              texto.index("LAS_PREGUNTAS") < texto.index("LAS_RESPUESTAS"))
+
+        check("los encabezados pierden la numeracion del metodo",
+              not any(h.strip().startswith(("1.", "2.", "3.", "4.", "5.", "6."))
+                      for h in encabezados))
+        check("el nombre del archivo de Obsidian no queda de titulo",
+              "Titulo Largo Del Archivo" not in texto)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_canales_de_enfasis() -> None:
+    """
+    Solo hay dos marcas de enfasis y significan cosas distintas. Destacar
+    funciona porque es escaso: si todo resalta, no resalta nada.
+    """
+    print("\n== los dos canales de enfasis ==")
+    from docx import Document as Doc
+
+    nota = (
+        "# A\n\n## La materia\n"
+        "> [!examen] ESTO_ENTRA_EN_LA_PRUEBA\n\n"
+        "texto normal\n\n"
+        "> [!verificar] ESTO_PUEDE_ESTAR_MAL\n"
+    )
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", "", nota, [], {"rutas": {"output": str(tmp)}}, "", None,
+        )
+        doc = Doc(str(ruta))
+        texto = "\n".join(p.text for p in doc.paragraphs)
+        check("lo que entra en la prueba se etiqueta como tal",
+              "ENTRA EN LA PRUEBA" in texto and "ESTO_ENTRA_EN_LA_PRUEBA" in texto)
+        check("el aviso de confiabilidad usa la otra marca",
+              "Verificar" in texto and "ESTO_PUEDE_ESTAR_MAL" in texto)
+        check("el aviso va donde esta el problema, no al principio",
+              texto.index("ESTO_ENTRA_EN_LA_PRUEBA") < texto.index("ESTO_PUEDE_ESTAR_MAL"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_parrafos_y_justificado() -> None:
+    """
+    Las notas vienen con el texto cortado cada ochenta o noventa caracteres,
+    que es lo normal en markdown. Cada una de esas lineas se convertia en un
+    parrafo suelto de Word con su espacio debajo, asi que un parrafo salia
+    partido en seis trozos cortados a mitad de frase.
+    """
+    print("\n== los parrafos no se parten por renglon ==")
+    from docx import Document as Doc
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    nota = (
+        "# A\n\n## La materia\n"
+        "La pregunta que abre la clase es incomoda a proposito: si una empresa\n"
+        "tiene buenos productos y buenos servicios, por que igual puede quebrar?\n"
+        "La respuesta es que el problema casi nunca es el producto.\n\n"
+        "Un segundo parrafo, aparte del primero.\n\n"
+        "- una viñeta\n"
+        "- otra viñeta\n"
+    )
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        ruta = docx_generator.generar_docx(
+            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
+            "T", "", nota, [], {"rutas": {"output": str(tmp)}}, "", None,
+        )
+        doc = Doc(str(ruta))
+        cuerpo = [p.text for p in doc.paragraphs
+                  if p.style.name == "Normal" and p.text.strip()]
+
+        check("el parrafo queda entero en un solo parrafo",
+              any("incomoda a proposito" in t and "casi nunca es el producto" in t
+                  for t in cuerpo))
+        check("la linea en blanco si separa parrafos",
+              any(t.strip() == "Un segundo parrafo, aparte del primero." for t in cuerpo))
+        check("las viñetas no se fusionan entre si",
+              sum(1 for p in doc.paragraphs if p.style.name == "List Bullet") == 2)
+
+        # Una viñeta larga tambien viene cortada en la nota, y su segunda mitad
+        # se desprendia como parrafo suelto. Se veia igual que el problema que
+        # esta funcion venia a arreglar (37 viñetas asi en una nota real).
+        from orquestador.docx_generator import _unir_lineas_de_parrafo
+        r = _unir_lineas_de_parrafo(
+            "- **Evaluacion:** el 30% son talleres\n  y el 30% es el examen.\n"
+            "- Otra viñeta.\n"
+        ).splitlines()
+        check("una viñeta cortada se rearma entera",
+              any(l.startswith("- **Evaluacion:**") and "es el examen" in l for l in r))
+        check("y no deja huerfano el resto",
+              not any(l.startswith("y el 30%") for l in r))
+        check("la viñeta siguiente sigue siendo otra", "- Otra viñeta." in r)
+
+        r2 = _unir_lineas_de_parrafo("1. Primer paso que sigue\n   abajo.\n2. Segundo.\n")
+        check("los puntos numerados tambien se rearman",
+              any(l.startswith("1.") and "abajo." in l for l in r2.splitlines()))
+
+        r3 = _unir_lineas_de_parrafo("> [!examen] entra esto\n> y esto tambien.\n")
+        check("una cita de dos renglones es una sola cita",
+              len([l for l in r3.splitlines() if l.strip()]) == 1)
+
+        r4 = _unir_lineas_de_parrafo("| a | b |\n|---|---|\n| 1 | 2 |\n")
+        check("las tablas no se pegan entre si",
+              len([l for l in r4.splitlines() if l.strip()]) == 3)
+
+        r5 = _unir_lineas_de_parrafo('```mapa\n{"centro": "x",\n "ramas": []}\n```\n')
+        check("dentro de un bloque cercado no se toca nada",
+              '{"centro": "x",' in r5.splitlines())
+
+        alineacion = doc.styles["Normal"].paragraph_format.alignment
+        check("el cuerpo va justificado", alineacion == WD_ALIGN_PARAGRAPH.JUSTIFY)
+
+        xml = doc.settings.element.xml
+        check("con particion de palabras, para que no queden rios de espacios",
+              "autoHyphenation" in xml)
+
+        margen = doc.sections[0].left_margin.cm
+        check("y con la linea a un ancho legible", 3.0 <= margen <= 4.0, f"{margen}cm")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_audio_largo_se_corta_solo() -> None:
+    """
+    Una clase real de 1 h 56 min hizo que Whisper devolviera cero caracteres sin
+    lanzar ningun error, y el pipeline siguio hasta entregarle un archivo vacio
+    al modelo. Ahora los audios largos se cortan antes de transcribir, y una
+    transcripcion vacia detiene la corrida en vez de gastar una llamada.
+    """
+    print("\n== audios largos y transcripciones vacias ==")
+    import subprocess as sp
+
+    from orquestador import transcripcion as tr
+    from orquestador.estado_vivo import duracion_audio_segundos
+
+    check("el umbral deja pasar una clase corta sin cortarla",
+          tr.UMBRAL_PARTIR_SEGUNDOS > 30 * 60)
+    check("el trozo no supera lo ya probado", tr.DURACION_TROZO_SEGUNDOS <= 20 * 60)
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        audio = tmp / "largo.m4a"
+        sp.run(["ffmpeg", "-v", "error", "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=50",
+                "-c:a", "aac", str(audio), "-y"], check=True, capture_output=True)
+
+        original = tr.DURACION_TROZO_SEGUNDOS
+        tr.DURACION_TROZO_SEGUNDOS = 20
+        try:
+            trozos = tr._partir_audio(str(audio), tmp / "trozos")
+            check("un audio largo se parte en varios trozos", len(trozos) == 3, str(len(trozos)))
+            check("los trozos quedan en orden",
+                  [x.name for x in trozos] == sorted(x.name for x in trozos))
+            total = sum(duracion_audio_segundos(x) or 0 for x in trozos)
+            check("no se pierde audio al cortar", abs(total - 50) < 2, f"{total:.1f}s de 50s")
+        finally:
+            tr.DURACION_TROZO_SEGUNDOS = original
+
+        try:
+            tr._verificar_parte("", str(audio), 900)
+            check("una transcripcion vacia detiene la corrida", False)
+        except ValueError as e:
+            check("una transcripcion vacia detiene la corrida", True)
+            check("el mensaje avisa que el audio no se perdio", "sigue donde estaba" in str(e))
+            check("y sugiere cortarlo en partes", "partes" in str(e))
+
+        try:
+            tr._verificar_parte("palabra " * 300, str(audio), 900)
+            check("una transcripcion normal pasa sin molestar", True)
+        except ValueError:
+            check("una transcripcion normal pasa sin molestar", False)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -671,7 +915,11 @@ if __name__ == "__main__":
     probar_formulas_en_tablas()
     probar_matematica_dentro_de_frases()
     probar_mapa_y_secciones()
-    probar_puntos_a_verificar()
+    probar_llamados_a_la_accion()
+    probar_documento_no_se_repite()
+    probar_canales_de_enfasis()
+    probar_parrafos_y_justificado()
+    probar_audio_largo_se_corta_solo()
     probar_aviso_anki()
 
     print()

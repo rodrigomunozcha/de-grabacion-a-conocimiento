@@ -108,7 +108,9 @@ def construir_gate_de_rutas(vault_dir: str):
     return gate
 
 
-def _construir_prompt(ruta_texto: str, ramo: str, carpeta_ramo: str) -> str:
+def _construir_prompt(
+    ruta_texto: str, ramo: str, carpeta_ramo: str, nota_extra: str = ""
+) -> str:
     # La carpeta llega ya resuelta y creada por el orquestador (ver
     # carpetas.py). Darsela exacta, y decirle explicitamente que no busque, es
     # lo que evita que liste el vault entero: ese listado entraba al contexto y
@@ -124,6 +126,7 @@ def _construir_prompt(ruta_texto: str, ramo: str, carpeta_ramo: str) -> str:
         "No explores el vault de Obsidian ni busques la carpeta del ramo, ya esta "
         "resuelta. Si necesitas ver que otras notas del ramo hay para enlazarlas, "
         "mira solo dentro de esa carpeta."
+        + (f"\n\n{nota_extra}" if nota_extra else "")
     )
 
 
@@ -153,7 +156,8 @@ def _guardar_resultado_skill(slug: str, resultado: dict | None) -> Path:
 
 
 async def aplicar_skill(
-    ruta_texto: str, ramo: str, vault_dir: str, slug: str, carpeta_ramo: str
+    ruta_texto: str, ramo: str, vault_dir: str, slug: str, carpeta_ramo: str,
+    nota_extra: str = "",
 ) -> dict | None:
     """
     Corre la skill y devuelve lo que reporto, mas el campo "session_id" que
@@ -161,13 +165,19 @@ async def aplicar_skill(
     puede pedirle a esta misma sesion que corrija sin volver a leer la
     transcripcion completa. Ver corregir_con_revision.
 
+    `nota_extra` se pega al final del prompt. Lo usa el modo que rehace una
+    clase ya procesada, para autorizar explicitamente el sobrescribir sus
+    propias notas anteriores: la skill tiene la regla de pedir confirmacion
+    antes de pisar una nota existente, y en una corrida desatendida no hay
+    nadie a quien preguntarle.
+
     `carpeta_ramo` es la carpeta exacta donde van las notas, ya resuelta y
     creada (ver carpetas.py). `vault_dir` se sigue necesitando aparte, para el
     gate de rutas: acota la escritura a todo el vault, no solo a esa carpeta,
     porque la skill puede tener razones legitimas para leer notas de otros
     ramos al enlazar.
     """
-    prompt = _construir_prompt(ruta_texto, ramo, carpeta_ramo)
+    prompt = _construir_prompt(ruta_texto, ramo, carpeta_ramo, nota_extra)
     options = ClaudeAgentOptions(
         cwd=str(PROJECT_ROOT),
         # La skill se habilita por nombre en la opcion `skills`, no metiendo
@@ -250,6 +260,11 @@ def _construir_prompt_correccion(hallazgos: list[dict]) -> str:
         "- Si un hallazgo es correcto, arreglalo. Cuando la transcripcion no "
         "respalda algo, la salida correcta casi nunca es reescribirlo mejor: es "
         "quitarlo o marcarlo (reconstruccion a verificar, dudoso: audio, hueco).\n"
+        "- Si despues de corregir queda algo de lo que el estudiante deba "
+        "desconfiar, dejalo dicho con un callout `> [!verificar]` **pegado al "
+        "parrafo afectado**, no al principio de la nota. Una advertencia lejos "
+        "del contenido del que habla no se lee, o se lee sin poder usarla. Di "
+        "que tiene de raro en concreto, no una advertencia generica.\n"
         "- Si un hallazgo esta equivocado y la transcripcion te da la razon, no "
         "cambies nada por ese punto y explica en una linea por que.\n"
         "- No reescribas secciones enteras ni cambies el estilo. Toca solo lo "

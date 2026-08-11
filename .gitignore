@@ -10,6 +10,14 @@ orquestador/config.json
 /Output/
 /Procesados/
 
+# Originales sin comprimir que comprimir_notas_voz.py aparta al convertir a
+# AAC. Nunca los borra: quedan aca para que el estudiante los borre el mismo.
+/Grabaciones ya procesadas y por borrar/
+
+# Preparaciones de clase: derivan del material de cada profesor (sus apuntes,
+# sus diapositivas, la bibliografia del curso), asi que no se publican.
+/Preclases/
+
 # Dependencias de Node (se reinstalan con npm install)
 node_modules/
 
@@ -40,3 +48,6 @@ barra_menu/BarraEstado
 orquestador/estado_actual.json
 orquestador/bitacora_actual.json
 orquestador/respaldos_bitacora/
+
+# Respaldo de notas antes de rehacer una clase: contienen material real
+orquestador/respaldo_notas/

@@ -57,6 +57,20 @@ porque la transcripción es ruidosa y la tentación de rellenar es alta.
   presentes una corrección como textual del profe.
 - **Si el material no alcanza, dilo.** Una nota honesta con huecos marcados vale más que
   una completa e inventada. Un hueco señalado le dice al estudiante qué buscar.
+- **Lo que dice entrar en la prueba se cita, no se deduce.** Es la regla más estricta de
+  todas, y aplica a la sección "Lo que el profesor pidió". Esa sección es la que el
+  estudiante más va a creer y más va a estudiar, así que una inferencia tuya ahí no es un
+  error menor: es una guía de estudio falsa. Solo entra lo que el profesor **dijo**, y
+  cada punto va acompañado de su frase textual. Si lo dijo a medias o el audio no permite
+  estar seguro, se marca. Nunca escribas "probablemente entre" ni completes con lo que
+  parece importante.
+
+## Cómo se arma el material
+
+`references/diseno-documento.md` fija la estructura, qué se destaca y qué se corta, con
+la evidencia detrás de cada regla. Léelo antes de escribir la nota de aprendizaje. Lo
+esencial: **cada cosa se cuenta una sola vez**. Explicar la misma materia con varios
+envoltorios no refuerza, estorba, y desplaza a lo que sí rinde.
 
 ## Estilo de escritura
 
@@ -143,11 +157,10 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      vez, señal de que es candidato fuerte para la prueba). Para cada uno, el nombre
      del concepto y una razón breve que hable de frecuencia o énfasis ("aparece en
      la definición, en el ejemplo y se retoma al cierre"), no de importancia general.
-   - **Una sección "Materia lista para estudiar"** dentro de la nota de
-     aprendizaje, en el lugar donde iría la sesión de estudio de 90 minutos
-     (esa sesión sigue existiendo en la nota, pero el `.docx` mostrará esta en
-     su lugar). Es la sección más importante del documento: el estudiante
-     debería poder estudiar la clase entera solo con ella.
+   - **Una sección "La materia"** dentro de la nota de aprendizaje, que
+     reemplaza a los pasos 1, 2 y 5 del método (ver Fase 2). Es el cuerpo del
+     documento: el estudiante debería poder estudiar la clase entera solo con
+     ella, sin abrir ninguna otra cosa.
 
      No es un resumen ni un plan de estudio. Es **la materia ya digerida**:
      - Explica cada tema **desarrollado**, no en una línea. Si el profesor tardó
@@ -155,6 +168,11 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      - **Muchos ejemplos numéricos y concretos**, resueltos paso a paso. Si el
        profesor dio uno, resuélvelo completo y agrega otro parecido para que el
        estudiante compruebe si entendió.
+     - **Los casos y ejemplos que usó el profesor van aquí, desarrollados.** Si
+       contó el caso de una empresa, la analogía del gallo o la cajita del
+       impuesto, este es su lugar, dentro del tema que ilustraban. No los dejes
+       solo en la nota de fuente: el documento de estudio tiene que bastarse
+       solo, y esos casos suelen ser lo que hace entender la idea.
      - **Cuándo se usa cada cosa.** La duda real no suele ser qué es una
        fórmula, sino cuál toca en cada caso. Dilo explícitamente.
      - **Los errores que se cometen aquí**, y cómo se detectan.
@@ -162,6 +180,34 @@ de ponerse a prueba es de él, no algo que la skill le exija.
        **(aporte externo)**, siempre que apoye lo que el profesor enseñó y no lo
        reemplace.
      - Escríbelo para alguien que faltó a la clase y solo tiene esto.
+
+     Ordénala por temas, en el orden en que se entienden mejor, no
+     necesariamente en el orden en que el profesor los tocó.
+
+   - **Marcas de énfasis dentro de la nota.** Solo existen dos, y cada una
+     significa una cosa. Ver `references/diseno-documento.md` para por qué son
+     solo dos: destacar funciona porque es escaso, y un documento donde todo
+     resalta no resalta nada.
+
+     - `> [!examen]` para lo que el profesor dijo que entra en una evaluación.
+       Úsalo **dentro de la materia**, pegado al tema del que habló, no en un
+       bloque aparte. Ejemplo:
+       `> [!examen] El profesor dijo que esto entra en el control: "los cuatro supuestos se los voy a preguntar sí o sí".`
+       Solo si lo dijo. Esta marca no se pone por importancia percibida.
+
+       **Cómo decidir dónde va.** Cuando termines la materia, recorre uno por
+       uno los puntos que pusiste en `evaluacion` (ver los llamados a la acción,
+       más abajo). Por cada uno, busca el lugar de la materia donde se explica
+       ese tema y ponle la marca ahí, con la cita. Si el punto habla de la
+       evaluación en general y no de un contenido de esta clase (porcentajes,
+       formato, fechas), no lo marques en ninguna parte: ya está en la primera
+       sección y repetirlo solo gasta el destacado.
+     - `> [!verificar]` para avisar de algo que puede estar mal (audio dudoso,
+       reconstrucción, hueco). Va **junto al contenido afectado**, nunca reunido
+       al principio del documento. Ejemplo:
+       `> [!verificar] La cifra puede estar mal: el audio dice "quince" pero el ejemplo solo cuadra con cincuenta.`
+
+     No uses ningún otro tipo de callout en la nota de aprendizaje.
 
    - **Un mapa visual, como datos y no como descripción.** No escribas "el mapa
      tendría en el centro X y tres ramas": el sistema lo dibuja de verdad y lo
@@ -219,9 +265,33 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      |---|---|
      | Conozco σ | $\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}$ |
      ```
+   - **Los llamados a la acción del profesor.** Todo lo que dijo que el curso
+     tiene que hacer o saber, con fecha o sin ella: cuándo es la prueba, qué
+     hay que entregar, qué capítulo leer, qué cambió del programa, y sobre todo
+     **qué dijo que entra en una evaluación**.
+
+     Esta es la parte del material con más riesgo de todo el sistema, porque es
+     la que el estudiante va a creer sin cuestionar y la que va a usar para
+     decidir qué estudiar. Por eso:
+
+     - **Cada punto lleva la frase textual del profesor.** Si no puedes citarlo,
+       no va. Sin excepción.
+     - **No deduzcas.** Que un tema sea importante, o que el profesor lo repita
+       mucho, no significa que dijo que entra. Para eso ya están los conceptos
+       repetidos, que son otra cosa y se presentan como otra cosa.
+     - **Si quedó a medias o el audio no permite estar seguro**, inclúyelo con
+       `"seguro": false` y di en `textual` lo que alcanzó a escucharse.
+     - Las fechas van como el profesor las dijo ("el jueves 12", "la última
+       semana de septiembre"). No calcules una fecha exacta que él no dio.
+     - Si en la clase no hubo ningún anuncio, devuelve las dos listas vacías.
+       Eso es una respuesta correcta y frecuente. No rellenes.
+
+     Va en el JSON de abajo y también como primera sección de la nota de
+     aprendizaje, con el título "Lo que el profesor pidió".
+
    - Como última línea de tu respuesta de texto (sin nada más en esa línea, JSON
      válido en una sola línea):
-     `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "contexto": "<ruta completa de la nota de contexto previo, o cadena vacia si no hacia falta>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total]}`
+     `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "contexto": "<ruta completa de la nota de contexto previo, o cadena vacia si no hacia falta>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total], "llamados": {"avisos": [{"que": "<que hay que hacer>", "cuando": "<como lo dijo el profe, o cadena vacia>", "textual": "<frase textual>", "seguro": true}], "evaluacion": [{"tema": "<que entra>", "textual": "<frase textual>", "seguro": true}]}}`
 
    Esto es para que el sistema de orquestación pueda ubicar las notas y armar el
    `.docx` de respaldo sin tener que releer la transcripción de nuevo. No agregues
@@ -275,6 +345,13 @@ y sus extras, lee `references/metodo-mit.md`. El método, adaptado a clases, es:
 Extras del método que puedes ofrecer o incluir cuando aporten: detectar lagunas después
 de que responda, Feynman con corrección de una explicación suya, y un mapa visual del
 tema. Están en `references/metodo-mit.md`.
+
+**Los pasos 1, 2 y 5 no son tres secciones, son una.** Los tres explican los mismos
+conceptos con distinto envoltorio, y contar la materia varias veces perjudica el
+aprendizaje en vez de reforzarlo (ver `references/diseno-documento.md`). Fusiónalos en una
+sola sección desarrollada, "La materia", y que gane la versión con ejemplos resueltos.
+Lo que aportaban los otros dos pasos entra dentro: el porqué importa y el error típico del
+paso 1, y la claridad de explicarlo desde cero del paso 2.
 
 Adaptación importante de honestidad: el método MIT original pide "citar las fuentes". Acá
 las fuentes son las transcripciones. Cita la clase y la ubicación aproximada (ej. "clase

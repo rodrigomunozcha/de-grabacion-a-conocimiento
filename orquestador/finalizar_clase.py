@@ -31,7 +31,7 @@ from . import estado_vivo
 from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
-from .revisor import hallazgos_graves, hallazgos_para_avisar, revisar
+from .revisor import hallazgos_graves, revisar
 from .skill_runner import aplicar_skill, corregir_con_revision
 
 # Topes de tiempo por etapa. El tope de turnos no alcanza: una llamada al SDK
@@ -78,9 +78,27 @@ def _slug_de(trabajo_metadata: dict) -> str:
     return trabajo_metadata.get("slug") or trabajo_metadata["fecha"]
 
 
+def _clase_ya_archivada(trabajo_metadata: dict) -> bool:
+    """
+    La marca real de que una clase termino es que su audio ya no esta donde
+    empezo: archivar_audio() lo mueve como el ultimo paso de la etapa 6.
+
+    Antes se usaba la existencia de <slug>_skill.json para esto, pero ese
+    archivo lo escribe la etapa 4, mucho antes de terminar. Una clase que se
+    cortaba entre la etapa 4 y la 6 (revision, documento, archivado) quedaba
+    marcada como lista para siempre: cada clic siguiente la saltaba en
+    silencio, sin audio movido, sin .docx y sin ningun aviso. Paso en vivo con
+    SISTEMAS Y ESTRUCTURA DIGITAL (04-08-2026): la revision fallo con un bug
+    ya corregido, la clase nunca llego a archivar_audio(), y siguio
+    "terminada" en cada corrida siguiente porque _skill.json ya estaba ahi.
+    """
+    archivos = trabajo_metadata.get("archivos_originales") or []
+    return bool(archivos) and all(not Path(a).exists() for a in archivos)
+
+
 async def _revisar_y_corregir(
     ruta_texto: str, resultado_skill: dict, ramo: str, vault_dir: str, slug: str
-) -> tuple[dict, list[dict]]:
+) -> dict:
     """
     Etapa 5: un revisor independiente compara las notas contra la transcripcion
     cruda, y si encontro algo grave, la sesion que las escribio las corrige.
@@ -91,6 +109,13 @@ async def _revisar_y_corregir(
     <slug>_revision.json y no gastan una pasada mas: un revisor al que se le
     pide encontrar algo siempre encuentra algo, y corregir por cada detalle
     duplicaria el costo de cada clase para cambiar comas.
+
+    Lo que la correccion no logra arreglar queda marcado dentro de la nota, con
+    un callout `> [!verificar]` pegado al parrafo afectado. Antes esos avisos
+    iban juntos en una seccion al principio del documento, y esa seccion se
+    saltea: obliga a recordar una advertencia durante diez paginas hasta llegar
+    al parrafo del que hablaba. Puesto al lado del contenido, se lee cuando
+    sirve (ver references/diseno-documento.md).
 
     Toda esta etapa es opcional por diseño. Si falla, se sigue con lo que
     escribio la skill: las notas ya estan en el vault y son utiles. Que la
@@ -106,18 +131,23 @@ async def _revisar_y_corregir(
             f"{ramo}: se corto para no dejar la clase colgada. Las notas quedaron "
             "como las escribio la skill, sin revisar.",
         )
-        return resultado_skill, []
+        return resultado_skill
     except Exception as e:
         notificar_aviso(
             "La revision no corrio",
             f"{ramo}: {type(e).__name__}. Las notas quedaron como las escribio la skill, "
             "sin revisar.",
         )
-        return resultado_skill, [], []
+        # Dos valores, como el resto de las salidas de esta funcion. Devolver
+        # tres aqui costo una clase entera en vivo (SISTEMAS Y ESTRUCTURA
+        # DIGITAL, 04-08-2026): la revision fallo, este manejador reventó al
+        # desempaquetar, y el codigo que existe para degradar en vez de abortar
+        # fue justamente el que abortó.
+        return resultado_skill
 
     graves = hallazgos_graves(revision)
     if revision.get("veredicto") != "corregir" or not graves:
-        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
+        return resultado_skill
 
     notificar_progreso(
         estado_vivo.PASO_REVISION,
@@ -125,21 +155,20 @@ async def _revisar_y_corregir(
     )
     try:
         with anyio.fail_after(TIMEOUT_REVISION_SEGUNDOS):
-            corregido = await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
-        return corregido, hallazgos_para_avisar(revision, se_corrigio=True)
+            return await corregir_con_revision(resultado_skill, graves, vault_dir, slug)
     except TimeoutError:
         notificar_aviso(
             "La correccion tardo demasiado",
             f"{ramo}: se corto. Revisa los hallazgos en {slug}_revision.json.",
         )
-        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
+        return resultado_skill
     except Exception as e:
         notificar_aviso(
             "La correccion no se pudo aplicar",
             f"{ramo}: {type(e).__name__}. Revisa los hallazgos en "
             f"{slug}_revision.json y corrige a mano lo que corresponda.",
         )
-        return resultado_skill, hallazgos_para_avisar(revision, se_corrigio=False)
+        return resultado_skill
 
 
 async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitacora=None) -> Path:
@@ -165,13 +194,23 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
         bitacora.fotografiar_carpeta(carpeta_ramo)
 
     estado_vivo.fijar_clase(f"{ramo} - {trabajo_metadata.get('fecha', '')}")
-    notificar_progreso(estado_vivo.PASO_SKILL, "puede tardar unos minutos")
-    with anyio.fail_after(TIMEOUT_SKILL_SEGUNDOS):
-        resultado_skill = await aplicar_skill(
-            ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
-        )
+    # Si una corrida anterior llego hasta aca y se corto despues (revision,
+    # documento o archivado), <slug>_skill.json ya existe y es bueno: se
+    # reusa en vez de pagar la skill de nuevo (~16.000 tokens fijos mas la
+    # transcripcion completa). Visto en vivo con SISTEMAS Y ESTRUCTURA
+    # DIGITAL (04-08-2026, ver _clase_ya_archivada mas abajo).
+    ruta_skill_json = dir_pendientes() / f"{slug}_skill.json"
+    if ruta_skill_json.exists():
+        notificar_progreso(estado_vivo.PASO_SKILL, "ya estaba analizada, retomando desde ahi")
+        resultado_skill = json.loads(ruta_skill_json.read_text(encoding="utf-8"))
+    else:
+        notificar_progreso(estado_vivo.PASO_SKILL, "puede tardar unos minutos")
+        with anyio.fail_after(TIMEOUT_SKILL_SEGUNDOS):
+            resultado_skill = await aplicar_skill(
+                ruta_texto, ramo, vault_dir, slug, str(carpeta_ramo)
+            )
 
-    resultado_skill, hallazgos = await _revisar_y_corregir(
+    resultado_skill = await _revisar_y_corregir(
         ruta_texto, resultado_skill, ramo, vault_dir, slug
     )
 
@@ -194,7 +233,7 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
     with cancelacion.seccion_critica():
         ruta_docx = generar_docx(
             trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config,
-            texto_contexto, hallazgos,
+            texto_contexto, resultado_skill.get("llamados"),
         )
         if bitacora is not None:
             bitacora.archivo_creado(ruta_docx)
@@ -240,8 +279,7 @@ async def procesar_pendientes_reconocidos(config: dict | None = None, bitacora=N
         trabajo_metadata = json.loads(ruta_metadata.read_text(encoding="utf-8"))
         if not trabajo_metadata.get("reconocido"):
             continue
-        ruta_skill_json = dir_pendientes() / f"{_slug_de(trabajo_metadata)}_skill.json"
-        if ruta_skill_json.exists():
+        if _clase_ya_archivada(trabajo_metadata):
             continue  # ya se proceso antes
 
         try:

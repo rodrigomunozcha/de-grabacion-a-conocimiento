@@ -10,14 +10,21 @@ nada más que soltar el audio y hacer un clic. Por cada clase que grabes, el sis
    Obsidian.
 3. Revisa ese trabajo con un segundo agente independiente, que compara las notas contra
    la transcripción cruda y busca contenido sin respaldo. Si encuentra algo grave, manda
-   a corregirlo antes de seguir.
+   a corregirlo antes de seguir, y deja el aviso pegado al párrafo del que habla.
 4. Arma un `.docx` con diseño pensado para leer y estudiar, que incluye:
-   - **Contexto previo** al principio: menos de una página con lo que hay que saber
-     antes para entender la clase, sin suponer que ya lo sabes.
-   - **Materia lista para estudiar**: el contenido ya digerido, con ejemplos resueltos
-     paso a paso y cuándo se usa cada cosa.
+   - **Lo que el profesor pidió**, de primero: fechas de prueba, entregas, y lo que dijo
+     que entra en evaluación. Cada punto con la frase textual del profesor, porque esta
+     es la sección que más se cree y no puede salir de una deducción.
+   - **Contexto previo**: menos de una página con lo que hay que saber antes para
+     entender la clase, sin suponer que ya lo sabes.
+   - **La materia ya digerida**, con los casos y ejemplos del profesor resueltos paso a
+     paso y cuándo se usa cada cosa.
    - **Fórmulas dibujadas** con tipografía matemática real, no como texto plano.
    - **Un mapa de la clase**, dibujado de verdad, no descrito en palabras.
+
+   Cada cosa se cuenta una sola vez. El documento no repite la misma materia con varios
+   envoltorios, porque eso desplaza a lo que sí sirve para aprender (ver "El diseño del
+   documento" más abajo).
 5. Archiva el audio original, ordenado por ramo y fecha.
 6. Agrega las preguntas y respuestas como flashcards en Anki.
 7. Te avisa con una notificación nativa de macOS cuando termina (o si algo falló).
@@ -190,6 +197,7 @@ orquestador/         El código del pipeline
   config.example.json Plantilla de referencia para armar tu propio config.json
   revisor.py          El segundo agente que revisa las notas antes de archivarlas
   carpetas.py         Ubica la carpeta de cada ramo en tu vault (y la recuerda)
+  regenerar.py        Rehace el .docx de una clase ya procesada, con el diseño actual
   logs/uso.jsonl      Cuanto consumio cada llamada al modelo
 .claude/skills/       La skill que aplica el método de estudio sobre cada transcripción
 ```
@@ -241,6 +249,23 @@ de cada clase.
 
 Toda esta etapa es opcional por diseño. Si la revisión falla, la clase se termina de
 procesar igual con lo que escribió la skill, y recibes un aviso de que quedó sin revisar.
+
+### El diseño del documento
+
+`.claude/skills/transcripciones-a-conocimiento/references/diseno-documento.md` fija la
+estructura del documento, qué se destaca y qué se corta, con la evidencia detrás de cada
+regla. La idea que manda: cada cosa se cuenta una sola vez. Explicar la misma materia
+con varios envoltorios no refuerza, desplaza a lo que sí rinde.
+
+Si cambias ese diseño, puedes rehacer los documentos de las clases ya procesadas sin
+volver a transcribir ni a analizar nada:
+
+```bash
+/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.regenerar
+```
+
+Sin argumentos te lista las clases disponibles. Por defecto escribe un archivo aparte y
+no toca el documento que ya tenías. Con `--pisar` lo reemplaza.
 
 ### Cuánto consume
 

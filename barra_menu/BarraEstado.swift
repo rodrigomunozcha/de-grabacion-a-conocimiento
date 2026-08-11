@@ -38,6 +38,8 @@ struct Estado: Decodable {
     var fin: Double?
     var pid: Int?
     var interrumpible: Bool?
+    var subpaso: Int?
+    var subtotal: Int?
     var cancelado: Bool?
     var revertido: [String]?
 
@@ -46,6 +48,7 @@ struct Estado: Decodable {
         case inicioPaso = "inicio_paso"
         case etaSegundos = "eta_segundos"
         case error, resultado, fin, pid, interrumpible, cancelado, revertido
+        case subpaso, subtotal
     }
 }
 
@@ -124,7 +127,14 @@ final class Controlador: NSObject, NSApplicationDelegate {
     private func dibujarEnProgreso(_ estado: Estado) {
         let paso = estado.paso ?? 0
         let total = estado.total ?? 5
-        item?.button?.title = paso > 0 ? "◐ \(paso)/\(total)" : "◐"
+        // El avance interno del paso, si lo hay: transcribir una clase larga
+        // son media hora en el mismo paso, y sin esto el icono se ve tan
+        // quieto como si estuviera colgado.
+        var titulo = paso > 0 ? "◐ \(paso)/\(total)" : "◐"
+        if let sub = estado.subpaso, let subTotal = estado.subtotal, subTotal > 1 {
+            titulo += " · \(sub)/\(subTotal)"
+        }
+        item?.button?.title = titulo
         item?.button?.toolTip = "Procesando una clase"
 
         menu.removeAllItems()
