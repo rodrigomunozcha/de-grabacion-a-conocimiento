@@ -52,7 +52,48 @@ def _extraer_fecha_de_nombre(nombre: str) -> date | None:
         return None
 
 
+# Margen hacia atras para aceptar una fecha escrita en el nombre. Cubre de
+# sobra grabaciones de semestres anteriores sin llegar a tragarse un numero
+# cualquiera que se parezca a una fecha.
+ANIOS_HACIA_ATRAS_PLAUSIBLES = 3
+
+
+def _fecha_de_nombre_plausible(nombre: str) -> date | None:
+    """La fecha del nombre, solo si puede ser de una clase de verdad: ni en el
+    futuro ni de hace demasiados anios."""
+    fecha = _extraer_fecha_de_nombre(nombre)
+    if fecha is None:
+        return None
+    hoy = date.today()
+    if fecha > hoy:
+        return None
+    if fecha.year < hoy.year - ANIOS_HACIA_ATRAS_PLAUSIBLES:
+        return None
+    return fecha
+
+
 def _resolver_fecha_archivo(archivo: Path) -> date:
+    """
+    La fecha escrita en el nombre manda sobre la del archivo.
+
+    Antes mandaba el mtime y el nombre era solo un rescate para fechas
+    imposibles (las corruptas de 1970). Eso fusiono dos clases reales: una de
+    "Biologia celular 19.08.26" y otra de "Termodinamica 20.08.26" se
+    copiaron a Input la misma noche, las dos quedaron con mtime del 20, se
+    agruparon como una sola clase de dos partes y terminaron en un mismo
+    documento, mezclando dos ramos distintos.
+
+    El nombre lo escribe el estudiante y dice cuando fue la clase. El mtime lo
+    escribe el sistema de archivos y cambia con cada copia, AirDrop o traslado.
+    Cuando los dos discrepan, el que sabe es el nombre.
+
+    El mtime sigue sirviendo cuando no hay fecha en el nombre, que es el caso
+    de las grabaciones con nombre generico.
+    """
+    del_nombre = _fecha_de_nombre_plausible(archivo.name)
+    if del_nombre is not None:
+        return del_nombre
+
     fecha_mtime = date.fromtimestamp(archivo.stat().st_mtime)
     if fecha_mtime >= FECHA_MINIMA_PLAUSIBLE:
         return fecha_mtime

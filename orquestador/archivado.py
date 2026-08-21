@@ -6,10 +6,12 @@ y se numera para no pisarse entre si.
 
 Una vez movido, se intenta comprimir a AAC en el mismo lugar (ver
 comprimir_notas_voz.comprimir_en_sitio). La clase ya paso por Whisper, que
-igual reduce todo a 16 kHz mono antes de transcribir (ver CLAUDE.md), asi que
-conservar el audio original sin comprimir en Procesados/ solo gasta espacio
-sin proteger nada. Si la compresion falla o ffmpeg no esta, el audio se
-archiva igual sin comprimir: no vale la pena perder una clase por esto.
+igual reduce todo a 16 kHz mono antes de transcribir (el porque, con las
+funciones exactas que lo hacen, esta en el encabezado de
+comprimir_notas_voz.py), asi que conservar el audio original sin comprimir en
+Procesados/ solo gasta espacio sin proteger nada. Si la compresion falla o
+ffmpeg no esta, el audio se archiva igual sin comprimir: no vale la pena
+perder una clase por esto.
 
 El original que se reemplaza NUNCA se borra: comprimir_en_sitio lo mueve a
 "Grabaciones ya procesadas y por borrar/[Ramo]/", para que el estudiante lo

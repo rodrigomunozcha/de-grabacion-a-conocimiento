@@ -924,6 +924,68 @@ def probar_el_borrado_no_alcanza_tus_carpetas() -> None:
           "gettempdir" in cuerpo and "is_relative_to" in cuerpo)
 
 
+def probar_dos_clases_no_se_fusionan() -> None:
+    """
+    Dos clases reales terminaron en un mismo documento: "Biologia
+    celular 19.08.26" y "Termodinamica 20.08.26" se copiaron a Input la
+    misma noche, las dos quedaron con mtime del 20, se agruparon como una sola
+    clase de dos partes y mezclaron dos ramos distintos. El nombre tenia la
+    fecha correcta y se estaba ignorando.
+    """
+    print("\n== dos clases distintas no se fusionan ==")
+    import os
+    from datetime import timedelta
+
+    hoy = date.today()
+    ayer = hoy - timedelta(days=1)
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        def crear(nombre: str, mtime_dia: date) -> Path:
+            f = tmp / nombre
+            f.write_bytes(b"audio")
+            ts = __import__("time").mktime(mtime_dia.timetuple())
+            os.utime(f, (ts, ts))
+            return f
+
+        # El caso real: dos clases de dias distintos, copiadas el mismo dia.
+        a = crear(f"Biología celular {ayer:%d.%m.%y}.m4a", hoy)
+        b = crear(f"Termodinámica {hoy:%d.%m.%y}.m4a", hoy)
+
+        check("la fecha del nombre gana sobre la del archivo",
+              deteccion._resolver_fecha_archivo(a) == ayer,
+              str(deteccion._resolver_fecha_archivo(a)))
+        grupos = deteccion.agrupar_por_fecha([a, b])
+        check("quedan como dos clases separadas", len(grupos) == 2, str(list(grupos)))
+        check("ninguna queda con dos audios",
+              all(len(v) == 1 for v in grupos.values()))
+
+        # Sin fecha en el nombre se sigue usando la del archivo.
+        c = crear("grabacion sin fecha.m4a", ayer)
+        check("sin fecha en el nombre manda el archivo",
+              deteccion._resolver_fecha_archivo(c) == ayer)
+
+        # Una fecha del futuro en el nombre no se cree.
+        futuro = hoy + timedelta(days=30)
+        d = crear(f"clase {futuro:%d.%m.%y}.m4a", hoy)
+        check("una fecha futura en el nombre se descarta",
+              deteccion._resolver_fecha_archivo(d) == hoy)
+
+        # Un numero que parece fecha pero es de hace decadas tampoco.
+        e = crear("Capitulo 1.2.99 repaso.m4a", ayer)
+        check("un numero viejo que parece fecha se descarta",
+              deteccion._resolver_fecha_archivo(e) == ayer)
+
+        # Una clase partida de verdad por el estudiante si debe agruparse.
+        f1 = crear(f"Historia {ayer:%d.%m.%y} parte A.m4a", hoy)
+        f2 = crear(f"Historia {ayer:%d.%m.%y} parte B.m4a", hoy)
+        g = deteccion.agrupar_por_fecha([f1, f2])
+        check("dos archivos de la MISMA fecha si se agrupan juntos",
+              len(g) == 1 and len(list(g.values())[0]) == 2)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def probar_aviso_anki() -> None:
     print("\n== aviso cuando Anki esta cerrado ==")
     from orquestador import anki_connect, dialogo_anki
@@ -955,6 +1017,484 @@ def probar_aviso_anki() -> None:
         dialogo_anki._preguntar = original_preg
 
 
+def probar_titulo_nunca_falta() -> None:
+    """
+    El titulo era el unico campo que finalizar_clase leia sin respaldo, y una
+    linea RESULTADO_ORQUESTADOR sin el costaba la clase entera con las notas ya
+    escritas. Peor: el _skill.json quedaba guardado, asi que el reintento
+    fallaba en el mismo punto para siempre.
+    """
+    print("\n== el titulo que falta no puede costar la clase ==")
+    from orquestador.skill_runner import normalizar_resultado
+
+    r = normalizar_resultado({"fuente": "a.md"}, "TERMODINAMICA")
+    check("sin titulo, usa el ramo", r["titulo"] == "TERMODINAMICA")
+    check("sin conceptos, deja la lista vacia", r["conceptos_repetidos"] == [])
+
+    check("un titulo en blanco cuenta como ausente",
+          normalizar_resultado({"titulo": "   "}, "R")["titulo"] == "R")
+    check("un titulo que no es texto cuenta como ausente",
+          normalizar_resultado({"titulo": 5}, "R")["titulo"] == "R")
+    check("un titulo bueno no se toca",
+          normalizar_resultado({"titulo": "Oferta y demanda"}, "R")["titulo"]
+          == "Oferta y demanda")
+
+    check("conceptos mal formados pasan a lista vacia",
+          normalizar_resultado({"titulo": "T", "conceptos_repetidos": "no es lista"},
+                               "R")["conceptos_repetidos"] == [])
+    check("conceptos buenos no se tocan",
+          normalizar_resultado({"titulo": "T", "conceptos_repetidos": ["a", "b"]},
+                               "R")["conceptos_repetidos"] == ["a", "b"])
+
+    # Un respaldo vacio dejaria el archivo terminado en " - ".
+    sin_ramo = normalizar_resultado({}, "  ")["titulo"]
+    check("sin ramo tampoco queda en blanco", sin_ramo.strip() != "")
+    nombre = nombres.nombre_base(1, "2026-08-13", sin_ramo)
+    check("el nombre de archivo no queda colgando de un guion",
+          not nombre.rstrip().endswith("-"), nombre)
+
+
+def probar_error_del_sdk_se_explica() -> None:
+    """
+    Un fallo HTTP de la API llega con subtype "success", asi que el mensaje que
+    veia el estudiante era "La skill termino con error: success". Paso en vivo y
+    costo reprocesar una clase entera.
+    """
+    print("\n== un error del SDK tiene que decir que paso ==")
+    from orquestador.skill_runner import describir_error_sdk
+
+    class _Falso:
+        def __init__(self, **kw):
+            self.subtype = "success"
+            self.api_error_status = None
+            self.terminal_reason = None
+            self.errors = None
+            self.__dict__.update(kw)
+
+    texto = describir_error_sdk(_Falso(api_error_status=529))
+    check("nombra el codigo HTTP cuando lo hay", "529" in texto, texto)
+    check("y no se queda solo en el subtype engañoso", texto != "subtype=success", texto)
+
+    texto = describir_error_sdk(_Falso(terminal_reason="max_turns"))
+    check("dice por que termino la corrida", "max_turns" in texto, texto)
+
+    texto = describir_error_sdk(_Falso(errors=["se cayo la conexion"]))
+    check("incluye los errores que traiga", "se cayo la conexion" in texto, texto)
+
+    # Un ResultMessage viejo puede no traer los campos nuevos del SDK.
+    class _Viejo:
+        subtype = "error_during_execution"
+
+    check("no revienta si el SDK no trae los campos nuevos",
+          "error_during_execution" in describir_error_sdk(_Viejo()))
+
+
+def _falsear_query(mensajes):
+    """Sustituto de claude_agent_sdk.query: emite mensajes ya preparados."""
+    async def _query(*a, **kw):
+        for m in mensajes:
+            yield m
+    return _query
+
+
+def _mensajes_sdk(texto: str, is_error: bool, **extra):
+    """Lo que emitiria el SDK en una corrida: la respuesta y el resultado."""
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+    return [
+        AssistantMessage(content=[TextBlock(text=texto)], model="falso"),
+        ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=is_error,
+            num_turns=3,
+            session_id="sesion-1",
+            usage={},
+            total_cost_usd=0.0,
+            **extra,
+        ),
+    ]
+
+
+def probar_error_tardio_no_tira_el_trabajo() -> None:
+    """
+    Un 429 o un 529 al final de una corrida ya terminada no puede costar la
+    clase. Paso en vivo dos veces: en una clase real (13 turnos perdidos y
+    reprocesada entera) y en el ensayo, con las tres notas ya escritas.
+    """
+    print("\n== un error de la API al final no puede tirar el trabajo hecho ==")
+    import asyncio
+
+    from orquestador import skill_runner
+
+    LINEA = ('RESULTADO_ORQUESTADOR: {"titulo": "Tema real", "fuente": "f.md", '
+             '"aprendizaje": "a.md", "conceptos_repetidos": ["x"]}')
+
+    avisos = []
+    originales = (skill_runner.query, skill_runner.registrar_uso,
+                  skill_runner.notificar_aviso)
+    tmp = Path(tempfile.mkdtemp(prefix="pendientes_falsos_"))
+    usar_dir_pendientes(tmp)
+    skill_runner.registrar_uso = lambda *a, **kw: None
+    skill_runner.notificar_aviso = lambda t, c: avisos.append((t, c))
+    try:
+        # 1. La skill alcanzo a reportar su trabajo y despues fallo la API.
+        skill_runner.query = _falsear_query(
+            _mensajes_sdk(LINEA, True, api_error_status=529)
+        )
+        r = asyncio.run(skill_runner.aplicar_skill(
+            "t.txt", "TERMODINAMICA", "/tmp/vault", "slug1", "/tmp/vault/E"))
+        check("la clase se salva pese al error de la API", r["titulo"] == "Tema real")
+        check("el _skill.json queda guardado", (tmp / "slug1_skill.json").is_file())
+        check("te avisa de que la API fallo", len(avisos) == 1, str(avisos))
+        check("el aviso nombra el codigo HTTP", "529" in avisos[0][1], str(avisos))
+        # Sin la terminal abierta, "2026-08-13_3e73c56e" no le dice nada a nadie.
+        check("y nombra el ramo, no el slug interno",
+              "TERMODINAMICA" in avisos[0][1] and "slug1" not in avisos[0][1], str(avisos))
+
+        # 2. Sin error de la API no hay aviso que moleste.
+        avisos.clear()
+        skill_runner.query = _falsear_query(_mensajes_sdk(LINEA, False))
+        asyncio.run(skill_runner.aplicar_skill(
+            "t.txt", "TERMODINAMICA", "/tmp/vault", "slug2", "/tmp/vault/E"))
+        check("una corrida limpia no dispara ningun aviso", avisos == [], str(avisos))
+
+        # 3. Si ademas no hay nada aprovechable, revienta, pero explicando.
+        skill_runner.query = _falsear_query(
+            _mensajes_sdk("no reporte nada", True, api_error_status=429)
+        )
+        try:
+            asyncio.run(skill_runner.aplicar_skill(
+                "t.txt", "TERMODINAMICA", "/tmp/vault", "slug3", "/tmp/vault/E"))
+            check("sin resultado utilizable si falla", False, "no revento")
+        except ValueError as e:
+            check("sin resultado utilizable si falla", True)
+            check("y el error dice el codigo HTTP, no 'success'", "429" in str(e), str(e))
+
+        # 4. La correccion tambien conserva su trabajo si la API falla al final.
+        avisos.clear()
+        corregida = ('RESULTADO_ORQUESTADOR: {"titulo": "Tema corregido", '
+                     '"fuente": "f.md", "conceptos_repetidos": ["x"]}')
+        skill_runner.query = _falsear_query(
+            _mensajes_sdk(corregida, True, api_error_status=529)
+        )
+        previo = {"titulo": "Tema real", "session_id": "sesion-1"}
+        r = asyncio.run(skill_runner.corregir_con_revision(
+            previo, [{"que": "algo"}], "/tmp/vault", "slug4"))
+        check("la correccion no se pierde por un error tardio",
+              r["titulo"] == "Tema corregido", str(r))
+        check("y queda marcada como corregida",
+              r.get("corregido_tras_revision") is True, str(r))
+
+        # 5. Si la correccion no reporta nada, se vuelve a lo anterior y avisa.
+        avisos.clear()
+        skill_runner.query = _falsear_query(
+            _mensajes_sdk("no reporte nada", True, api_error_status=529)
+        )
+        r = asyncio.run(skill_runner.corregir_con_revision(
+            previo, [{"que": "algo"}], "/tmp/vault", "slug5"))
+        check("sin correccion confirmada se conserva lo anterior",
+              r["titulo"] == "Tema real", str(r))
+        check("y te avisa de que el documento va sin corregir",
+              len(avisos) == 1 and "529" in avisos[0][1], str(avisos))
+        check("ese aviso tambien nombra la clase, no el slug",
+              "Tema real" in avisos[0][1] and "slug5" not in avisos[0][1], str(avisos))
+    finally:
+        (skill_runner.query, skill_runner.registrar_uso,
+         skill_runner.notificar_aviso) = originales
+        usar_dir_pendientes(None)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_no_afirmar_que_el_profe_no_pidio_nada() -> None:
+    """
+    "El profesor no anuncio nada" y "no se pudo averiguar" no pueden verse
+    igual. Antes se veian: un 429 devolvia dos listas vacias, el llamador las
+    cacheaba en el _skill.json, y como solo se reintenta cuando el campo no
+    existe, la clase quedaba afirmando en falso que no habia nada que estudiar.
+    """
+    print("\n== no afirmar que el profesor no pidio nada ==")
+    import asyncio
+
+    from orquestador import regenerar as rg
+
+    avisos = []
+    originales = (rg.query, rg.registrar_uso, rg.notificar_aviso)
+    rg.registrar_uso = lambda *a, **kw: None
+    rg.notificar_aviso = lambda t, c: avisos.append((t, c))
+    try:
+        LISTA = ('RESULTADO_LLAMADOS: {"avisos": [{"que": "prueba", "cuando": "", '
+                 '"textual": "el jueves", "seguro": true}], "evaluacion": []}')
+        VACIO = 'RESULTADO_LLAMADOS: {"avisos": [], "evaluacion": []}'
+
+        # 1. Respuesta con anuncios de verdad.
+        rg.query = _falsear_query(_mensajes_sdk(LISTA, False))
+        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s1"))
+        check("una respuesta con anuncios se devuelve tal cual",
+              r and len(r["avisos"]) == 1, str(r))
+        check("y no molesta con ningun aviso", avisos == [], str(avisos))
+
+        # 2. El profesor de verdad no anuncio nada. Es respuesta legitima.
+        rg.query = _falsear_query(_mensajes_sdk(VACIO, False))
+        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s2"))
+        check("dos listas vacias comprobadas son una respuesta valida",
+              r == {"avisos": [], "evaluacion": []}, str(r))
+        check("tampoco avisa nada en ese caso", avisos == [], str(avisos))
+
+        # 3. La API fallo y ademas no hubo linea: aqui si es "no se sabe".
+        rg.query = _falsear_query(
+            _mensajes_sdk("no alcance a responder", True, api_error_status=429)
+        )
+        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s3"))
+        check("un fallo de la API no se hace pasar por lista vacia", r is None, str(r))
+        check("y te avisa nombrando el codigo HTTP",
+              len(avisos) == 1 and "429" in avisos[0][1], str(avisos))
+        check("el aviso aclara que no es lo mismo que no haber anuncios",
+              "no significa" in avisos[0][1], str(avisos))
+
+        # 4. El modelo contesto pero sin la linea, sin error de la API.
+        avisos.clear()
+        rg.query = _falsear_query(_mensajes_sdk("no reporte nada", False))
+        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s4"))
+        check("una respuesta sin la linea tampoco se hace pasar por vacia", r is None)
+        check("y tambien avisa", len(avisos) == 1, str(avisos))
+
+        # 5. La API fallo DESPUES de que el modelo ya habia reportado. La
+        # respuesta vale: emitir la linea es la prueba de que el trabajo se
+        # hizo. Mismo criterio que en aplicar_skill y corregir_con_revision, y
+        # esta prueba existe para que nadie lo "corrija" en sentido contrario.
+        avisos.clear()
+        rg.query = _falsear_query(_mensajes_sdk(LISTA, True, api_error_status=529))
+        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s5"))
+        check("un error posterior al reporte no descarta la respuesta",
+              r and len(r["avisos"]) == 1, str(r))
+    finally:
+        (rg.query, rg.registrar_uso, rg.notificar_aviso) = originales
+
+
+def probar_lo_no_comprobado_no_se_cachea() -> None:
+    """
+    El dano real no era devolver vacio, era guardarlo: la condicion para
+    reintentar es que el campo no exista, asi que un vacio cacheado congela la
+    mentira para siempre.
+    """
+    print("\n== lo que no se pudo comprobar no se guarda ==")
+    import asyncio
+    import json as _json
+
+    from orquestador import regenerar as rg
+
+    tmp = Path(tempfile.mkdtemp(prefix="regenerar_falso_"))
+    usar_dir_pendientes(tmp)
+    originales = (rg.extraer_llamados, rg.generar_docx, rg._leer_nota)
+    rg.generar_docx = lambda *a, **kw: tmp / "falso.docx"
+    rg._leer_nota = lambda ruta, vault: "texto"
+    try:
+        cfg = {"rutas": {"vault_obsidian": str(tmp), "output": str(tmp)}}
+
+        def preparar(slug):
+            (tmp / f"{slug}.json").write_text(_json.dumps({
+                "ramo": "TERMODINAMICA", "fecha": "2026-08-13", "numero_clase": 2,
+                "archivo_texto": str(tmp / "t.txt"), "archivos_originales": [],
+            }), encoding="utf-8")
+            (tmp / f"{slug}_skill.json").write_text(_json.dumps({
+                "titulo": "Tema", "fuente": "f.md", "conceptos_repetidos": [],
+            }), encoding="utf-8")
+
+        # No se pudo averiguar: el _skill.json no debe quedar con "llamados".
+        preparar("sinsaber")
+        rg.extraer_llamados = lambda *a, **kw: _corutina(None)
+        asyncio.run(rg.regenerar("sinsaber", cfg))
+        guardado = _json.loads((tmp / "sinsaber_skill.json").read_text(encoding="utf-8"))
+        check("un resultado no comprobado no se guarda",
+              "llamados" not in guardado, str(guardado.get("llamados")))
+        check("asi la proxima regeneracion lo vuelve a intentar",
+              guardado.get("llamados") is None)
+
+        # Comprobado: si se guarda, para no volver a pagar la lectura.
+        preparar("sabido")
+        rg.extraer_llamados = lambda *a, **kw: _corutina({"avisos": [], "evaluacion": []})
+        asyncio.run(rg.regenerar("sabido", cfg))
+        guardado = _json.loads((tmp / "sabido_skill.json").read_text(encoding="utf-8"))
+        check("un vacio comprobado si se guarda",
+              guardado.get("llamados") == {"avisos": [], "evaluacion": []}, str(guardado))
+    finally:
+        (rg.extraer_llamados, rg.generar_docx, rg._leer_nota) = originales
+        usar_dir_pendientes(None)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_revision_fallida_no_dice_aprobado() -> None:
+    """
+    El revisor es la unica barrera antes de que el material entre a Anki. Una
+    revision que no llego a correr quedaba guardada como "aprobado", o sea con
+    cara de comprobada y limpia, y el campo que guardaba la verdad no lo leia
+    nadie.
+    """
+    print("\n== una revision que no corrio no puede decir 'aprobado' ==")
+    import asyncio
+
+    from orquestador import revisor as rv
+
+    originales = (rv.query, rv.registrar_uso)
+    tmp = Path(tempfile.mkdtemp(prefix="revision_falsa_"))
+    usar_dir_pendientes(tmp)
+    rv.registrar_uso = lambda *a, **kw: None
+    try:
+        previo = {"fuente": "f.md", "aprendizaje": "a.md"}
+
+        # El revisor no alcanzo a emitir su linea.
+        rv.query = _falsear_query(_mensajes_sdk("no alcance", True, api_error_status=529))
+        r = asyncio.run(rv.revisar("t.txt", previo, "TERMODINAMICA", "/tmp/v", "s1"))
+        check("el veredicto no es 'aprobado'", r["veredicto"] != "aprobado", str(r))
+        check("dice explicitamente que no se reviso",
+              r["veredicto"] == "no_revisado", str(r))
+        check("y guarda el motivo con el codigo HTTP",
+              "529" in r["revision_fallida"], str(r))
+        # finalizar_clase decide corregir comparando contra "corregir": un
+        # veredicto nuevo no puede disparar una correccion por accidente.
+        check("no dispara correccion", r["veredicto"] != "corregir")
+        check("y no aporta hallazgos falsos", r["hallazgos"] == [])
+
+        # Una revision que si corrio sigue funcionando igual que siempre.
+        buena = ('RESULTADO_REVISION: {"veredicto": "aprobado", "hallazgos": []}')
+        rv.query = _falsear_query(_mensajes_sdk(buena, False))
+        r = asyncio.run(rv.revisar("t.txt", previo, "TERMODINAMICA", "/tmp/v", "s2"))
+        check("una revision real si puede aprobar", r["veredicto"] == "aprobado", str(r))
+        check("y no queda marcada como fallida",
+              not r.get("revision_fallida"), str(r))
+    finally:
+        (rv.query, rv.registrar_uso) = originales
+        usar_dir_pendientes(None)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def probar_una_sola_comprobacion_de_vault() -> None:
+    """
+    La comprobacion que impide que una ruta colada en la transcripcion meta
+    cualquier archivo del disco en el .docx estaba duplicada en dos modulos.
+    """
+    print("\n== la frontera del vault se comprueba en un solo lugar ==")
+    from orquestador import finalizar_clase as fc
+    from orquestador import regenerar as rg
+
+    vault = Path(tempfile.mkdtemp(prefix="notas_falsas_"))
+    try:
+        (vault / "buena.md").write_text("contenido de la nota", encoding="utf-8")
+        fuera = Path(tempfile.mkdtemp(prefix="fuera_")) / "secreto.md"
+        fuera.parent.mkdir(parents=True, exist_ok=True)
+        fuera.write_text("esto no puede terminar en el docx", encoding="utf-8")
+
+        for nombre, leer in (("finalizar_clase", fc._leer_nota), ("regenerar", rg._leer_nota)):
+            check(f"{nombre}: lee una nota de dentro del vault",
+                  leer(str(vault / "buena.md"), str(vault)) == "contenido de la nota")
+            check(f"{nombre}: no lee nada de fuera del vault",
+                  leer(str(fuera), str(vault)) == "")
+            check(f"{nombre}: una ruta vacia no revienta", leer(None, str(vault)) == "")
+            check(f"{nombre}: un archivo que no existe da vacio",
+                  leer(str(vault / "no_existe.md"), str(vault)) == "")
+
+        shutil.rmtree(fuera.parent, ignore_errors=True)
+    finally:
+        shutil.rmtree(vault, ignore_errors=True)
+
+
+async def _corutina(valor):
+    """Envuelve un valor para sustituir una funcion async en las pruebas."""
+    return valor
+
+
+def _gate_deja_pasar(gate, ruta, clave: str = "file_path") -> bool:
+    """Corre el hook y dice si autorizo la ruta. Devolver {} es autorizar."""
+    import asyncio
+
+    respuesta = asyncio.run(gate({"tool_input": {clave: str(ruta)}}, "id-1", None))
+    return respuesta == {}
+
+
+def _gate_motivo(gate, ruta) -> str:
+    import asyncio
+
+    respuesta = asyncio.run(gate({"tool_input": {"file_path": str(ruta)}}, "id-1", None))
+    return respuesta["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def probar_gate_de_rutas() -> None:
+    """
+    El gate es el unico freno real de la corrida automatizada: corre con
+    permission_mode "bypassPermissions", asi que sin el Write podria escribir en
+    cualquier parte del disco. Nunca habia tenido pruebas.
+    """
+    print("\n== el gate de rutas de la corrida automatizada ==")
+    from orquestador.skill_runner import construir_gate_de_rutas
+
+    # El prefijo evita a proposito la palabra "vault": el mensaje de denegacion
+    # repite la ruta denegada, y con ella dentro no se podria comprobar que el
+    # mensaje no nombre un vault entre las carpetas que si autorizo.
+    vault = Path(tempfile.mkdtemp(prefix="notas_falsas_"))
+    try:
+        gate = construir_gate_de_rutas(RAIZ, vault)
+
+        check("deja leer la transcripcion, que vive en el proyecto",
+              _gate_deja_pasar(gate, RAIZ / "orquestador" / "transcripciones_pendientes" / "x.txt"))
+        check("deja escribir la nota, que va en el vault",
+              _gate_deja_pasar(gate, vault / "TERMODINAMICA" / "Clase.md"))
+        check("deniega cualquier otra parte del disco",
+              not _gate_deja_pasar(gate, "/etc/passwd"))
+        check("deniega una carpeta vecina del proyecto",
+              not _gate_deja_pasar(gate, RAIZ.parent / "Otra cosa" / "a.md"))
+        check("deniega el home entero",
+              not _gate_deja_pasar(gate, "~/nota.md"))
+
+        # Glob y Grep no usan "file_path" sino "path": si el gate mirara solo
+        # una de las dos claves, la otra pasaria sin control.
+        check("tambien gatea la clave 'path' de Glob y Grep",
+              not _gate_deja_pasar(gate, "/etc", clave="path"))
+
+        # Una ruta con .. se resuelve antes de comparar, si no el gate se
+        # esquivaria escribiendo hacia arriba desde una carpeta autorizada.
+        check("un .. no escapa de una raiz autorizada",
+              not _gate_deja_pasar(gate, RAIZ / ".." / ".." / "etc" / "passwd"))
+
+        # Sin ruta no hay nada que validar (ej. una herramienta sin archivo).
+        import asyncio
+        check("una llamada sin ruta no se bloquea",
+              asyncio.run(gate({"tool_input": {}}, "id-1", None)) == {})
+
+        # La etapa que solo extrae los llamados a la accion corre con una sola
+        # raiz: el vault no tiene por que estar a su alcance (ver regenerar.py).
+        solo_proyecto = construir_gate_de_rutas(RAIZ)
+        check("con una sola raiz, el vault queda fuera",
+              not _gate_deja_pasar(solo_proyecto, vault / "nota.md"))
+        motivo = _gate_motivo(solo_proyecto, vault / "nota.md")
+        check("y el mensaje no inventa un vault que no autorizo",
+              "vault" not in motivo.lower(), motivo)
+        check("el mensaje dice cual es la raiz permitida", str(RAIZ) in motivo, motivo)
+
+        # Los intermedios del ensayo viven en el temp del sistema, fuera de las
+        # raices. Hoy no los lee el modelo (la metadata trae la ruta real del
+        # proyecto, ver finalizar_clase), pero si algun dia se movieran ahi,
+        # esta prueba lo dice en vez de fallar en vivo a mitad de una clase.
+        sandbox = Path(tempfile.mkdtemp(prefix="ensayo_falso_"))
+        try:
+            gate_ensayo = construir_gate_de_rutas(RAIZ, sandbox / "vault")
+            check("un intermedio del sandbox de ensayo no esta autorizado",
+                  not _gate_deja_pasar(gate_ensayo, sandbox / "pendientes" / "x.txt"))
+        finally:
+            shutil.rmtree(sandbox, ignore_errors=True)
+
+        # Un gate sin raices denegaria todo y la corrida fallaria en el primer
+        # Read, lejos de la llamada que se equivoco.
+        try:
+            construir_gate_de_rutas()
+            check("un gate sin raices se rechaza al construirlo", False, "no reventó")
+        except ValueError:
+            check("un gate sin raices se rechaza al construirlo", True)
+    finally:
+        shutil.rmtree(vault, ignore_errors=True)
+
+
 if __name__ == "__main__":
     probar_nombres()
     probar_deteccion()
@@ -977,7 +1517,16 @@ if __name__ == "__main__":
     probar_parrafos_y_justificado()
     probar_audio_largo_se_corta_solo()
     probar_el_borrado_no_alcanza_tus_carpetas()
+    probar_dos_clases_no_se_fusionan()
     probar_aviso_anki()
+    probar_titulo_nunca_falta()
+    probar_gate_de_rutas()
+    probar_error_del_sdk_se_explica()
+    probar_error_tardio_no_tira_el_trabajo()
+    probar_no_afirmar_que_el_profe_no_pidio_nada()
+    probar_lo_no_comprobado_no_se_cachea()
+    probar_revision_fallida_no_dice_aprobado()
+    probar_una_sola_comprobacion_de_vault()
 
     print()
     if fallos:

@@ -36,7 +36,12 @@ from claude_agent_sdk import (
 )
 
 from .config import dir_pendientes
-from .skill_runner import CLI_PATH, PROJECT_ROOT, construir_gate_de_rutas
+from .skill_runner import (
+    CLI_PATH,
+    PROJECT_ROOT,
+    construir_gate_de_rutas,
+    describir_error_sdk,
+)
 from .uso import registrar_uso
 
 
@@ -160,7 +165,7 @@ async def revisar(
     Devuelve {"veredicto": ..., "hallazgos": [...]}.
 
     Si el revisor no llega a emitir su linea de resultado, devuelve veredicto
-    "aprobado" con la razon anotada en vez de reventar: las notas ya estan
+    "no_revisado" con la razon anotada en vez de reventar: las notas ya estan
     escritas y son utiles, y una revision fallida no es motivo para perder la
     clase entera. Queda registrado en el JSON de revision para poder revisarlo
     despues.
@@ -191,7 +196,7 @@ async def revisar(
             "PreToolUse": [
                 HookMatcher(
                     matcher="Read",
-                    hooks=[construir_gate_de_rutas(vault_dir)],
+                    hooks=[construir_gate_de_rutas(PROJECT_ROOT, vault_dir)],
                 )
             ]
         },
@@ -209,12 +214,24 @@ async def revisar(
         elif isinstance(mensaje, ResultMessage):
             registrar_uso("revision", slug, mensaje)
             if mensaje.is_error:
-                error_sdk = mensaje.subtype
+                # No `mensaje.subtype` a secas: un fallo HTTP llega con subtype
+                # "success" y esto termina escrito en revision_fallida, o sea
+                # que el archivo diria "la revision fallo: success".
+                error_sdk = describir_error_sdk(mensaje)
 
     revision = _parsear_revision("\n".join(partes))
     if revision is None:
+        # "no_revisado", nunca "aprobado". Son cosas distintas y el archivo las
+        # decia iguales: un revisor que no llego a correr dejaba la clase
+        # marcada como comprobada y limpia, que es justo lo que este modulo
+        # existe para impedir. Nadie leia el campo revision_fallida, asi que la
+        # unica huella de la diferencia no la miraba nadie.
+        #
+        # No rompe a quien lo consume: finalizar_clase solo compara contra
+        # "corregir" para decidir si corrige, asi que un veredicto que no lo es
+        # se comporta igual que antes.
         revision = {
-            "veredicto": "aprobado",
+            "veredicto": "no_revisado",
             "hallazgos": [],
             "revision_fallida": error_sdk or "el revisor no emitio RESULTADO_REVISION",
         }

@@ -33,7 +33,14 @@ from claude_agent_sdk import (
 from .config import cargar_config, dir_pendientes
 from .docx_generator import generar_docx
 from .nombres import nombre_base
-from .skill_runner import CLI_PATH, PROJECT_ROOT, construir_gate_de_rutas
+from .notificaciones import notificar_aviso
+from .skill_runner import (
+    CLI_PATH,
+    PROJECT_ROOT,
+    construir_gate_de_rutas,
+    describir_error_sdk,
+    normalizar_resultado,
+)
 from .uso import registrar_uso
 
 MARCADOR_LLAMADOS = "RESULTADO_LLAMADOS:"
@@ -95,14 +102,23 @@ def _parsear(texto: str) -> dict | None:
     return None
 
 
-async def extraer_llamados(ruta_transcripcion: str, ramo: str, slug: str) -> dict:
+async def extraer_llamados(ruta_transcripcion: str, ramo: str, slug: str) -> dict | None:
     """
-    Devuelve {"avisos": [...], "evaluacion": [...]}.
+    Devuelve {"avisos": [...], "evaluacion": [...]}, o None si no se pudo
+    averiguar. Nunca revienta: una clase no se pierde por esto.
 
-    Si la extraccion falla, devuelve las listas vacias en vez de reventar. El
-    documento se arma igual y la seccion dice que no hubo anuncios, que es lo
-    mismo que veria el estudiante si el profesor no hubiera dicho nada. Una
-    clase no se pierde por esto.
+    Esa diferencia entre "no anuncio nada" y "no pude averiguarlo" antes no
+    existia, y esa era justamente la falla. Dos listas vacias son una respuesta
+    legitima y frecuente, el profesor no dijo nada. Pero cuando la llamada
+    fallaba (un 429, o una respuesta sin la linea RESULTADO_LLAMADOS) esto
+    devolvia tambien dos listas vacias, indistinguibles de la respuesta buena.
+
+    Y quien llama las guardaba en el _skill.json. Como la condicion para
+    reintentar es que el campo no exista, ya no se reintentaba nunca: un corte
+    de red quedaba congelado como "el profesor no pidio nada", en la seccion
+    que va primera en el documento y que el estudiante cree sin dudar (fechas
+    de prueba, entregas, que entra en la evaluacion). Perder la seccion es
+    mucho menos grave que afirmar en falso que esta vacia.
     """
     options = ClaudeAgentOptions(
         cwd=str(PROJECT_ROOT),
@@ -113,7 +129,12 @@ async def extraer_llamados(ruta_transcripcion: str, ramo: str, slug: str) -> dic
         permission_mode="bypassPermissions",
         hooks={
             "PreToolUse": [
-                HookMatcher(matcher="Read", hooks=[construir_gate_de_rutas(str(PROJECT_ROOT))])
+                # Solo el proyecto: esta etapa lee la transcripcion y nada mas,
+                # asi que el vault no tiene por que estar a su alcance.
+                HookMatcher(
+                    matcher="Read",
+                    hooks=[construir_gate_de_rutas(PROJECT_ROOT)],
+                )
             ]
         },
         cli_path=str(CLI_PATH),
@@ -121,6 +142,7 @@ async def extraer_llamados(ruta_transcripcion: str, ramo: str, slug: str) -> dic
     )
 
     partes = []
+    error_sdk = None
     async for mensaje in query(
         prompt=_construir_prompt(ruta_transcripcion, ramo), options=options
     ):
@@ -130,18 +152,40 @@ async def extraer_llamados(ruta_transcripcion: str, ramo: str, slug: str) -> dic
                     partes.append(bloque.text)
         elif isinstance(mensaje, ResultMessage):
             registrar_uso("llamados", slug, mensaje)
+            if mensaje.is_error:
+                error_sdk = describir_error_sdk(mensaje)
 
-    return _parsear("\n".join(partes)) or {"avisos": [], "evaluacion": []}
+    datos = _parsear("\n".join(partes))
+    if datos is None:
+        motivo = (
+            f"hubo un problema de conexion ({error_sdk})" if error_sdk
+            else "el modelo no devolvio la lista"
+        )
+        notificar_aviso(
+            "No se pudo leer lo que pidio el profesor",
+            f"{ramo}: {motivo}. El documento se arma sin esa seccion, y se "
+            "vuelve a intentar la proxima vez que regeneres esta clase. Ojo: "
+            "que la seccion falte no significa que el profesor no anunciara "
+            "nada, significa que no se pudo comprobar.",
+        )
+    return datos
 
 
 def _leer_nota(ruta: str | None, vault_dir: str) -> str:
-    if not ruta:
-        return ""
-    p = Path(ruta).expanduser().resolve()
-    raiz = Path(vault_dir).expanduser().resolve()
-    if not (p == raiz or p.is_relative_to(raiz)) or not p.is_file():
-        return ""
-    return p.read_text(encoding="utf-8")
+    """
+    Una sola implementacion, la de finalizar_clase, que es donde esta escrito
+    por que existe: acota la lectura al vault para que una ruta colada en la
+    transcripcion no pueda meter cualquier archivo del disco en el .docx y en
+    las flashcards. Aqui habia una copia equivalente, y duplicar una
+    comprobacion de seguridad garantiza que algun dia una de las dos se
+    endurezca y la otra se quede atras sin que nadie lo note.
+
+    El import va dentro de la funcion, como el de _revisar_y_corregir mas
+    abajo, para no crear una dependencia de modulo entre estos dos.
+    """
+    from .finalizar_clase import _leer_nota as leer
+
+    return leer(ruta, vault_dir)
 
 
 async def regenerar(slug: str, config: dict, sufijo: str = " (diseño nuevo)") -> Path:
@@ -158,19 +202,33 @@ async def regenerar(slug: str, config: dict, sufijo: str = " (diseño nuevo)") -
         )
 
     trabajo = json.loads(ruta_meta.read_text(encoding="utf-8"))
-    resultado = json.loads(ruta_skill.read_text(encoding="utf-8"))
+    # Este _skill.json puede venir de una corrida vieja, de antes de que el
+    # titulo tuviera respaldo garantizado (ver normalizar_resultado). Regenerar
+    # una clase asi no puede reventar por el nombre del documento.
+    resultado = normalizar_resultado(
+        json.loads(ruta_skill.read_text(encoding="utf-8")), trabajo["ramo"]
+    )
     vault_dir = config["rutas"]["vault_obsidian"]
 
     llamados = resultado.get("llamados")
     if llamados is None:
         print("  extrayendo los llamados a la accion de la transcripcion...")
-        llamados = await extraer_llamados(trabajo["archivo_texto"], trabajo["ramo"], slug)
-        # Se guardan para que la proxima regeneracion de esta clase no vuelva a
-        # pagar la lectura de la transcripcion.
-        resultado["llamados"] = llamados
-        ruta_skill.write_text(
-            json.dumps(resultado, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        extraidos = await extraer_llamados(trabajo["archivo_texto"], trabajo["ramo"], slug)
+        if extraidos is None:
+            # No se guarda a proposito. Cachear un vacio que no se pudo
+            # comprobar dejaria la clase afirmando "el profesor no pidio nada"
+            # para siempre, porque la condicion de arriba ya no volveria a ser
+            # verdadera (ver extraer_llamados). Sin guardar, el documento sale
+            # ahora sin la seccion y la proxima regeneracion lo reintenta.
+            llamados = {"avisos": [], "evaluacion": []}
+        else:
+            llamados = extraidos
+            # Se guardan para que la proxima regeneracion de esta clase no vuelva a
+            # pagar la lectura de la transcripcion.
+            resultado["llamados"] = llamados
+            ruta_skill.write_text(
+                json.dumps(resultado, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
 
     titulo = resultado["titulo"]
     trabajo["archivos"] = trabajo.get("archivos_originales", [])

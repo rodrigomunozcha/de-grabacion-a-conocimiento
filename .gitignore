@@ -14,6 +14,12 @@ orquestador/config.json
 # AAC. Nunca los borra: quedan aca para que el estudiante los borre el mismo.
 /Grabaciones ya procesadas y por borrar/
 
+# Lo que queda de una revision manual y hay que mirar antes de tirar: sandboxes
+# de ensayo (traen notas derivadas de una clase real) y archivos sueltos que se
+# sacaron del repositorio. Mismo criterio que la carpeta de arriba: nada se
+# borra solo, se deja a mano para que el estudiante decida.
+/Para revisar y borrar/
+
 # Preparaciones de clase: derivan del material de cada profesor (sus apuntes,
 # sus diapositivas, la bibliografia del curso), asi que no se publican.
 /Preclases/

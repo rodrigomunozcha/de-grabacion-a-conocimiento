@@ -1,20 +1,16 @@
 ---
 name: transcripciones-a-conocimiento
 description: >-
-  Convierte transcripciones crudas de clases grabadas (.txt o .tex de ingeniería
-  comercial: economía, termodinámica, finanzas, valorización, marketing, etc.) en
-  aprendizaje real con el método MIT de estudio activo. Primero entiende y limpia
-  el texto (charla de inicio y cierre, ruido del transcriptor, muletillas,
-  gráficos de pizarra que solo se mencionan, momentos donde el profe no fue
-  claro) hasta dejar una fuente confiable. Luego no resume: destila las ideas
-  centrales, explica desde cero, genera preguntas con respuestas modelo, y arma
-  sesión de estudio y kit de repaso. Guarda todo como notas de Obsidian
-  conectadas y pregunta a qué ramo pertenecen. Funciona con una clase, con varias
-  o con el ramo completo. Úsala siempre que el usuario suba una o más
-  transcripciones de clases y pida procesarlas, entenderlas, estudiarlas,
-  aprenderlas, limpiarlas u ordenarlas, aunque no diga "skill" ni "método MIT".
-  No la uses para una clase con fotos y audio que se estudia para un control
-  inmediato (eso es analisis-de-clase).
+  COPIA DEL ORQUESTADOR. Es la que invoca por nombre skill_runner.py en su
+  corrida automatizada, sobre una transcripción a la vez, con el ramo y la
+  carpeta de destino ya resueltos en el prompt, y termina reportando una línea
+  RESULTADO_ORQUESTADOR que el pipeline parsea. Para una petición conversacional
+  (alguien que sube transcripciones y pide procesarlas, entenderlas,
+  estudiarlas, limpiarlas u ordenarlas) usa la versión del plugin, no esta. Convierte transcripciones crudas de clases grabadas de
+  ingeniería comercial en aprendizaje real con el método MIT de estudio activo:
+  limpia el texto hasta dejar una fuente confiable, y luego destila las ideas
+  centrales, explica desde cero, genera preguntas con respuestas modelo y arma
+  sesión de estudio y kit de repaso, guardado como notas de Obsidian conectadas.
 ---
 
 # Transcripciones a Conocimiento

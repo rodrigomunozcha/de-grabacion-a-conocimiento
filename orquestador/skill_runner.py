@@ -1,23 +1,46 @@
 """
 Invoca la skill transcripciones-a-conocimiento via Claude Agent SDK, con el
 ramo y el alcance ya resueltos por el orquestador, para que no se detenga a
-preguntar nada de eso. Esta es la unica invocacion del SDK por clase: hace
-todo el trabajo que "requiere criterio" en una sola pasada (limpieza,
-destilado, preguntas y respuestas modelo, titulo, los 5 conceptos mas
-repetidos, y guardado en el vault de Obsidian).
+preguntar nada de eso. aplicar_skill hace de una pasada todo el trabajo que
+"requiere criterio" (limpieza, destilado, preguntas y respuestas modelo,
+titulo, los 5 conceptos mas repetidos, y guardado en el vault de Obsidian).
 
-Antes esto eran 3 invocaciones separadas (titulo, skill, conceptos
-repetidos). Cada invocacion del SDK paga un overhead fijo de ~16.000 tokens
-de system prompt (medido en vivo) antes de leer nada, ademas de releer la
-transcripcion completa cada vez. Fusionarlas en una sola ahorra ese costo
-dos veces por clase.
+No es la unica llamada al SDK de la clase, aunque si la unica que escribe las
+notas desde cero. Una clase con hallazgos usa tres: esta, el revisor (sesion
+aparte a proposito, ver revisor.py) y la correccion de mas abajo, que retoma
+la sesion de esta con `resume` para no volver a pagar la lectura de la
+transcripcion.
+
+Antes la escritura misma eran 3 invocaciones separadas (titulo, skill,
+conceptos repetidos). Cada invocacion del SDK paga un overhead fijo de
+~16.000 tokens de system prompt (medido en vivo) antes de leer nada, ademas
+de releer la transcripcion completa cada vez. Fusionarlas en una sola ahorra
+ese costo dos veces por clase. Antes de agregar una cuarta llamada, mide que
+ahorra.
 
 La skill vive en .claude/skills/transcripciones-a-conocimiento dentro de
 este proyecto (copiada del plugin original y adaptada para invocacion
 automatizada, ver el SKILL.md). El SDK la descubre porque cwd apunta a la
 raiz del proyecto y setting_sources incluye "project" (no hace falta "user":
-verificado en vivo que la skill se sigue encontrando igual, y asi la corrida
-no depende de configuracion global de la cuenta que podria cambiar sin aviso).
+verificado en vivo que la skill se sigue encontrando igual).
+
+Ojo con lo que arrastra ese "project", medido con get_context_usage() del
+propio SDK sobre estas mismas opciones:
+
+  - Carga el CLAUDE.md de la raiz del proyecto: 1.208 tokens en cada llamada
+    que lo lleve, o sea esta y la correccion. Son reglas de como trabajar
+    sobre el repositorio, no de como destilar una clase. Por eso el detalle
+    fino del pipeline vive en orquestador/CLAUDE.md, que se comprobo que NO
+    se carga, ni siquiera despues de leer la transcripcion, que esta en esa
+    misma carpeta.
+  - NO evita la memoria automatica de la cuenta: el MEMORY.md del usuario
+    (1.021 tokens) entra igual, con setting_sources=["project"] y tambien con
+    [], que es lo que usan revisor.py y regenerar.py. O sea que la corrida SI
+    depende de un archivo global que puede cambiar sin aviso, incluido el
+    revisor, que se diseño para llegar sin contexto previo. No hay opcion del
+    SDK para apagarlo (exclude_dynamic_sections solo lo reinyecta en el primer
+    mensaje, no lo quita). Tenerlo presente antes de guardar en esa memoria
+    algo que un revisor pudiera confundir con respaldo de la clase.
 
 Al terminar, la skill reporta todo en una linea "RESULTADO_ORQUESTADOR: {...}"
 (instruccion en el SKILL.md), que esta etapa parsea y guarda.
@@ -35,6 +58,7 @@ from claude_agent_sdk import (
 )
 
 from .config import dir_pendientes
+from .notificaciones import notificar_aviso
 from .uso import registrar_uso
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -58,12 +82,28 @@ SKILL = "transcripciones-a-conocimiento"
 # descontrola, corta mucho antes de gastar de mas.
 MAX_TURNS = 30
 
+# Tope de la tercera pasada, la que corrige lo que encontro el revisor. Va
+# aparte y con nombre para que los topes del pipeline se vean todos juntos
+# (los otros dos estan en revisor.py y regenerar.py). Coincide con el de
+# arriba por ahora, pero mide cosas distintas: aca son ediciones puntuales
+# sobre notas que ya existen, no el trabajo completo.
+MAX_TURNS_CORRECCION = 30
 
-def construir_gate_de_rutas(vault_dir: str):
+
+def construir_gate_de_rutas(*raices_permitidas: str | Path):
     """
-    Hook PreToolUse que acota al agente a las dos carpetas donde legitimamente
-    tiene algo que hacer: este proyecto (la transcripcion a leer y los archivos
-    de la propia skill) y el vault de Obsidian (donde escribe las notas).
+    Hook PreToolUse que acota al agente a las carpetas donde legitimamente
+    tiene algo que hacer. Cada llamador pasa las suyas: las etapas que escriben
+    notas pasan el proyecto (la transcripcion a leer y los archivos de la
+    propia skill) y el vault de Obsidian (donde escriben), y la que solo extrae
+    los llamados a la accion pasa solo el proyecto (ver regenerar.py).
+
+    Las raices llegan por parametro y no se deducen aqui dentro a proposito.
+    Antes esta funcion recibia el vault y agregaba PROJECT_ROOT por su cuenta,
+    con dos consecuencias: leyendo la llamada no se podia saber a que quedaba
+    autorizado el agente, y regenerar.py, que solo necesita el proyecto,
+    terminaba pasandolo en el parametro del vault, asi que el mensaje de
+    denegacion nombraba un "vault de Obsidian" que era la carpeta del proyecto.
 
     Existe porque la corrida es automatizada y usa permission_mode
     "bypassPermissions": nadie va a ver ni contestar una peticion de permiso,
@@ -82,7 +122,15 @@ def construir_gate_de_rutas(vault_dir: str):
     Lo usa tambien la etapa de revision (ver revisor.py), que corre con las
     mismas dos raices.
     """
-    raices = [PROJECT_ROOT.resolve(), Path(vault_dir).expanduser().resolve()]
+    if not raices_permitidas:
+        # Un gate sin raices denegaria todo, y la corrida fallaria recien en el
+        # primer Read, lejos de aqui y con un mensaje que no explica nada.
+        raise ValueError(
+            "construir_gate_de_rutas necesita al menos una raiz permitida."
+        )
+
+    raices = [Path(r).expanduser().resolve() for r in raices_permitidas]
+    raices_legibles = ", ".join(str(r) for r in raices)
 
     async def gate(input_data, tool_use_id, context):
         tool_input = input_data.get("tool_input") or {}
@@ -98,9 +146,8 @@ def construir_gate_de_rutas(vault_dir: str):
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
                 "permissionDecisionReason": (
-                    f"Ruta fuera de alcance: {destino}. Esta corrida solo puede leer y "
-                    f"escribir dentro del proyecto ({raices[0]}) y del vault de Obsidian "
-                    f"({raices[1]})."
+                    f"Ruta fuera de alcance: {destino}. Esta corrida solo puede "
+                    f"leer y escribir dentro de: {raices_legibles}."
                 ),
             }
         }
@@ -131,21 +178,73 @@ def _construir_prompt(
 
 
 def _parsear_resultado(texto: str) -> dict | None:
+    """
+    Solo parsea. Los campos se normalizan en normalizar_resultado, aparte y a
+    proposito: ver ahi por que no puede hacerse en este punto.
+    """
     for linea in texto.splitlines():
         linea = linea.strip()
         if linea.startswith(MARCADOR_RESULTADO):
             try:
-                resultado = json.loads(linea[len(MARCADOR_RESULTADO):].strip())
+                return json.loads(linea[len(MARCADOR_RESULTADO):].strip())
             except json.JSONDecodeError:
                 return None
-            # Si vinieron el titulo y las rutas pero los conceptos repetidos
-            # quedaron mal formados, no se pierde toda la corrida por eso:
-            # el .docx se arma igual, sin esa seccion (ver finalizar_clase.py).
-            conceptos = resultado.get("conceptos_repetidos")
-            if not isinstance(conceptos, list):
-                resultado["conceptos_repetidos"] = []
-            return resultado
     return None
+
+
+def describir_error_sdk(mensaje) -> str:
+    """
+    Arma un texto util a partir de un ResultMessage que llego con is_error.
+
+    `subtype` por si solo no sirve y ademas engaña: cuando lo que falla es una
+    llamada HTTP a la API (429, 500, 529), el subtype llega igual como
+    "success" y el codigo real viaja en api_error_status. El SDK lo documenta
+    en ResultMessage. El mensaje que se veia era "La skill termino con error:
+    success", que no dice absolutamente nada de lo que paso.
+    """
+    trozos = [f"subtype={mensaje.subtype}"]
+    estado = getattr(mensaje, "api_error_status", None)
+    if estado:
+        trozos.append(f"HTTP {estado}")
+    razon = getattr(mensaje, "terminal_reason", None)
+    if razon:
+        trozos.append(f"termino por {razon}")
+    errores = getattr(mensaje, "errors", None)
+    if errores:
+        trozos.append("; ".join(str(e) for e in errores))
+    return ", ".join(trozos)
+
+
+def normalizar_resultado(resultado: dict, titulo_respaldo: str) -> dict:
+    """
+    Garantiza los dos campos que el resto del pipeline lee con acceso directo:
+    "titulo" (string no vacio) y "conceptos_repetidos" (lista).
+
+    Esta aca y no dentro de _parsear_resultado porque hay tres formas de llegar
+    a un resultado y solo dos pasan por el parser: la skill recien corrida, la
+    correccion posterior a la revision (que reemplaza el resultado entero por
+    uno recien parseado, ver corregir_con_revision), y el <slug>_skill.json de
+    una corrida anterior, que se reusa tal cual desde el disco. Normalizar al
+    parsear dejaba ese tercer camino sin cubrir, que es justo el de los
+    reintentos.
+
+    Por que "titulo" no puede faltar: era el unico campo que finalizar_clase
+    leia con acceso directo y sin respaldo. Si el modelo emitia la linea
+    RESULTADO_ORQUESTADOR sin el, la clase se perdia entera por un KeyError,
+    con las notas ya escritas en el vault. Y como el _skill.json quedaba
+    guardado, cada reintento leia ese mismo archivo y fallaba en el mismo
+    punto: la clase quedaba imposible de terminar hasta borrar el archivo a
+    mano. El titulo solo nombra el .docx, no puede costar la clase.
+    """
+    titulo = resultado.get("titulo")
+    if not isinstance(titulo, str) or not titulo.strip():
+        # Sin ramo tampoco se queda en blanco: nombre_base pega el titulo
+        # despues de un " - ", y uno vacio deja el archivo terminado en guion.
+        resultado["titulo"] = titulo_respaldo.strip() or "Clase sin titulo"
+    if not isinstance(resultado.get("conceptos_repetidos"), list):
+        # El .docx se arma igual sin esa seccion (ver docx_generator.py).
+        resultado["conceptos_repetidos"] = []
+    return resultado
 
 
 def _guardar_resultado_skill(slug: str, resultado: dict | None) -> Path:
@@ -208,7 +307,7 @@ async def aplicar_skill(
             "PreToolUse": [
                 HookMatcher(
                     matcher="Write|Edit|Read|Glob|Grep",
-                    hooks=[construir_gate_de_rutas(vault_dir)],
+                    hooks=[construir_gate_de_rutas(PROJECT_ROOT, vault_dir)],
                 )
             ]
         },
@@ -218,6 +317,7 @@ async def aplicar_skill(
 
     partes = []
     session_id = None
+    error_sdk = None
     async for mensaje in query(prompt=prompt, options=options):
         if isinstance(mensaje, AssistantMessage):
             for bloque in mensaje.content:
@@ -227,13 +327,35 @@ async def aplicar_skill(
             registrar_uso("destilado", slug, mensaje)
             session_id = mensaje.session_id
             if mensaje.is_error:
-                raise RuntimeError(f"La skill termino con error: {mensaje.subtype}")
+                # Se anota y se sigue, no se levanta aqui. Antes esta linea
+                # hacia raise dentro del bucle y con eso se perdia `partes`,
+                # que es donde viene el RESULTADO_ORQUESTADOR: si el fallo era
+                # un 429 o un 529 al final de una corrida ya terminada, se
+                # tiraba el trabajo completo. Visto en vivo dos veces: en
+                # TALLER DE ANÁLISIS NUMÉRICO III (15-08-2026, 13 turnos
+                # perdidos y la clase reprocesada entera despues) y en el
+                # ensayo del 17-08, donde las tres notas estaban escritas y
+                # completas en el vault cuando salto el error. Es el mismo
+                # criterio que ya usaban revisar() y corregir_con_revision().
+                error_sdk = describir_error_sdk(mensaje)
 
     resultado = _parsear_resultado("\n".join(partes))
     if resultado is None:
         raise ValueError(
             "La skill no reporto RESULTADO_ORQUESTADOR, no se puede ubicar "
             "las notas ni los conceptos repetidos."
+            + (f" El SDK reporto: {error_sdk}." if error_sdk else "")
+        )
+
+    if error_sdk:
+        # La clase se salva, pero el error no se traga en silencio: que la API
+        # este fallando es algo que conviene saber antes de mandar cinco clases
+        # seguidas. Queda ademas en logs/uso.jsonl como error_api.
+        notificar_aviso(
+            "La API fallo, pero la clase se salvo",
+            f"{ramo}: hubo un problema de conexion ({error_sdk}) despues de que "
+            "la skill terminara su trabajo. Las notas quedaron completas y la "
+            "clase sigue su curso. No tienes que hacer nada.",
         )
 
     resultado["session_id"] = session_id
@@ -300,6 +422,8 @@ async def corregir_con_revision(
     if not session_id:
         return resultado_skill
 
+    error_sdk = None
+
     options = ClaudeAgentOptions(
         cwd=str(PROJECT_ROOT),
         skills=[SKILL],
@@ -312,15 +436,13 @@ async def corregir_con_revision(
             "PreToolUse": [
                 HookMatcher(
                     matcher="Write|Edit|Read|Glob|Grep",
-                    hooks=[construir_gate_de_rutas(vault_dir)],
+                    hooks=[construir_gate_de_rutas(PROJECT_ROOT, vault_dir)],
                 )
             ]
         },
         cli_path=str(CLI_PATH),
-        # Bastante mas bajo que el de la primera pasada: aca son ediciones
-        # puntuales sobre notas que ya existen, no el trabajo completo. Si se
-        # pasa de esto, algo se salio de lo esperado y es mejor cortar.
-        max_turns=30,
+        # Si se pasa de esto, algo se salio de lo esperado y es mejor cortar.
+        max_turns=MAX_TURNS_CORRECCION,
     )
 
     partes = []
@@ -334,12 +456,29 @@ async def corregir_con_revision(
         elif isinstance(mensaje, ResultMessage):
             registrar_uso("correccion", slug, mensaje)
             if mensaje.is_error:
-                return resultado_skill
+                # Anotar y seguir, no salir del bucle. Antes esto hacia return
+                # aqui mismo y perdia `partes`: si la correccion ya habia
+                # editado las notas y el fallo era un 429 al final, se
+                # descartaba el resultado corregido y el _skill.json quedaba
+                # con el titulo y las rutas de antes, sin la marca de
+                # corregido, mientras las notas del vault si estaban
+                # corregidas. Mismo motivo que en aplicar_skill.
+                error_sdk = describir_error_sdk(mensaje)
 
     corregido = _parsear_resultado("\n".join(partes))
     if corregido is None:
         # Las correcciones pueden haberse aplicado igual (el modelo edita antes
         # de reportar). Se conservan las rutas y el titulo que ya se tenian.
+        if error_sdk:
+            # El titulo antes que el slug: es lo unico legible que hay aca
+            # dentro, y el slug ("2026-08-13_a1b2c3d4") no le dice nada a nadie.
+            notificar_aviso(
+                "La correccion no se pudo confirmar",
+                f"{resultado_skill.get('titulo') or slug}: hubo un problema de "
+                f"conexion ({error_sdk}). Las notas del vault pueden haber "
+                "quedado corregidas igual, pero el documento se arma con la "
+                "version anterior a la correccion.",
+            )
         return resultado_skill
 
     corregido["session_id"] = session_id

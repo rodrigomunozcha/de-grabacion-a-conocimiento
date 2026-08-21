@@ -38,6 +38,11 @@ def registrar_uso(etapa: str, slug: str, mensaje_resultado) -> None:
             "cache_creacion": uso.get("cache_creation_input_tokens"),
             "cache_lectura": uso.get("cache_read_input_tokens"),
             "costo_usd_estimado": mensaje_resultado.total_cost_usd,
+            # Sin esto no se puede saber por que fallo una corrida cara: un
+            # fallo HTTP de la API llega con subtype "success" y el codigo real
+            # solo esta aqui (ver skill_runner.describir_error_sdk).
+            "error_api": getattr(mensaje_resultado, "api_error_status", None),
+            "termino_por": getattr(mensaje_resultado, "terminal_reason", None),
         }
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         with open(RUTA_USO, "a", encoding="utf-8") as f:

@@ -1,8 +1,13 @@
 """
 Encadena las etapas 4, 5 y 6 para las clases ya transcritas (etapa 3) y con
-ramo reconocido: una sola invocacion de la skill que limpia, destila, elige
-titulo y detecta los conceptos mas repetidos (etapa 4+5 fusionadas, ver
-skill_runner.py), y arma el .docx y archiva el audio (etapa 6).
+ramo reconocido: una pasada de la skill que limpia, destila, elige titulo y
+detecta los conceptos mas repetidos (etapa 4+5 fusionadas, ver
+skill_runner.py), la revision independiente y su correccion cuando hay
+hallazgos graves, y por ultimo el .docx y el archivado del audio (etapa 6).
+
+Eso son hasta tres llamadas al SDK por clase, no una: ver el encabezado de
+skill_runner.py para cuales son y por que la revision no se colapsa dentro de
+la sesion que escribio las notas.
 
 Los trabajos no reconocidos ya quedaron resueltos en Output/Sin clasificar
 por la etapa 3 y no pasan por aqui (ver transcripcion.py).
@@ -32,7 +37,7 @@ from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
 from .revisor import hallazgos_graves, revisar
-from .skill_runner import aplicar_skill, corregir_con_revision
+from .skill_runner import aplicar_skill, corregir_con_revision, normalizar_resultado
 
 # Topes de tiempo por etapa. El tope de turnos no alcanza: una llamada al SDK
 # puede quedarse esperando una respuesta que no llega nunca (visto en vivo, con
@@ -145,6 +150,18 @@ async def _revisar_y_corregir(
         # fue justamente el que abortó.
         return resultado_skill
 
+    # Tercer modo de falla de la revision, y el unico que no reventaba: el
+    # revisor arranco pero no llego a emitir su resultado (ver revisor.py). Se
+    # avisa igual que en los otros dos, porque para el estudiante el efecto es
+    # el mismo: las notas van al .docx y a Anki sin que nadie las comprobara.
+    if revision.get("revision_fallida"):
+        notificar_aviso(
+            "La revision no se pudo completar",
+            f"{ramo}: {revision['revision_fallida']}. Las notas quedaron como "
+            "las escribio la skill, sin revisar.",
+        )
+        return resultado_skill
+
     graves = hallazgos_graves(revision)
     if revision.get("veredicto") != "corregir" or not graves:
         return resultado_skill
@@ -213,6 +230,12 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
     resultado_skill = await _revisar_y_corregir(
         ruta_texto, resultado_skill, ramo, vault_dir, slug
     )
+
+    # Recien aca, porque este es el punto donde convergen los tres caminos que
+    # pueden producir el dict (ver normalizar_resultado). El respaldo del titulo
+    # es el nombre del ramo y no el ramo con la fecha: la fecha ya va aparte en
+    # el nombre del archivo (ver nombres.nombre_base).
+    resultado_skill = normalizar_resultado(resultado_skill, ramo)
 
     titulo = resultado_skill["titulo"]
     conceptos = resultado_skill["conceptos_repetidos"]

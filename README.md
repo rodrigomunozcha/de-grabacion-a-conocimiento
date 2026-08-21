@@ -101,6 +101,14 @@ poder hacer su trabajo.
    que sí puedes leer antes de ejecutar.
 
    Cuando terminen de compilarse, puedes arrastrar ambas al Dock.
+6. Comprueba que la instalación quedó bien:
+   ```bash
+   /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 tests/test_orquestador.py
+   ```
+   Tarda unos segundos y no toca nada tuyo: no transcribe, no llama a la IA, no escribe
+   en tu vault ni en Anki, así que no gasta nada de tu plan. Si termina diciendo "Todas
+   las pruebas pasaron", las piezas están en su sitio. Si alguna falla, el nombre de la
+   que falló te dice qué revisar antes de seguir.
 
 ## Primer uso: configurar tus ramos y carpetas
 
