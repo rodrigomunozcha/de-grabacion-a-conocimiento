@@ -1,0 +1,70 @@
+#!/bin/bash
+# Pausa antes de cada commit para mostrar que se va a subir, agrupado por
+# carpeta, y pedir una confirmacion deliberada.
+#
+# Existe porque un "git add -A" amplio metio 848 lineas de trabajo de un dia
+# entero (el respaldo del titulo, el gate de rutas, el manejo de errores del
+# SDK, el veredicto de la revision, 549 lineas de pruebas) dentro de un commit
+# que solo hablaba de fechas de archivo (911e2c6, 21-08-2026). Nadie lo noto
+# porque nadie miro la lista de archivos antes de confirmar.
+#
+# No intenta adivinar si un commit mezcla temas: se probo contra los commits
+# reales de este repo y ni la cantidad de archivos ni las lineas cambiadas son
+# una señal confiable. El commit problematico (13 archivos, 1039 lineas) es
+# mas chico que dos commits legitimos de un solo tema (18 archivos/1901
+# lineas, y 16 archivos/1141 lineas). Un tope por tamaño habria bloqueado
+# trabajo bueno sin bloquear el malo.
+#
+# Por eso esto solo garantiza una cosa: que alguien mire la lista completa
+# antes de que el commit se confirme. Aplica siempre, sin excepcion por
+# tamaño, porque ya se demostro que "chico" no es lo mismo que "seguro".
+#
+# Para activarlo (una vez, despues de clonar el repo):
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+archivos=$(git diff --cached --name-only)
+if [ -z "$archivos" ]; then
+    exit 0
+fi
+
+echo ""
+echo "Este commit va a incluir:"
+echo "$archivos" | awk -F'/' '
+    { if (NF==1) { area="(raiz)" }
+      else { area=$1; for (i=2; i<NF; i++) area = area "/" $i }
+      print area
+    }' | sort | uniq -c | sort -rn | while read -r cantidad carpeta; do
+    printf "  %2d archivo(s) en %s\n" "$cantidad" "$carpeta"
+done
+echo ""
+echo "$archivos" | sed 's/^/    /'
+echo ""
+
+if [ -t 0 ]; then
+    read -r -p "¿Es esto un solo tema coherente? [s/N] " respuesta
+    case "$respuesta" in
+        [sS]|[sS][iI])
+            exit 0
+            ;;
+        *)
+            echo "Commit cancelado. Revisa si hiciste 'git add' de mas."
+            exit 1
+            ;;
+    esac
+else
+    # Sin terminal interactiva (por ejemplo, una sesion de Claude Code que
+    # corre git commit por su cuenta) no hay a quien preguntarle. Se exige un
+    # gesto explicito en vez de dejar pasar en silencio: la misma idea, que
+    # nadie confirme sin haber mirado, adaptada a que aqui no hay quien mire.
+    if [ "${CONFIRMO_COMMIT:-}" = "1" ]; then
+        exit 0
+    fi
+    echo "No hay terminal interactiva para confirmar esto (por ejemplo, una"
+    echo "sesion de Claude Code corriendo el commit). Revisa la lista de"
+    echo "arriba. Si de verdad es un solo tema, repite el commit con:"
+    echo ""
+    echo "    CONFIRMO_COMMIT=1 git commit ..."
+    exit 1
+fi

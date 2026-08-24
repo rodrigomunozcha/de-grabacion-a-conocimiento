@@ -46,6 +46,31 @@ Dos reglas que se siguen de eso:
 - Si agregas una carpeta que va a guardar material de clases, estado de corrida o rutas
   personales, agrégala a `.gitignore` en el mismo cambio, con el porqué escrito.
 
+## Antes de cada commit
+
+**Nunca uses `git add -A` ni `git add .`.** Agrega archivos por nombre, uno por uno.
+Un `git add -A` metió 848 líneas de trabajo de un día entero (el respaldo del título, el
+gate de rutas, el manejo de errores del SDK, el veredicto de la revisión, las pruebas)
+dentro de un commit que solo hablaba de fechas de archivo (`911e2c6`, 21-08-2026).
+Nadie lo notó porque nadie miró la lista de archivos antes de confirmar.
+
+Por eso hay un hook de pre-commit versionado en `.githooks/pre-commit`: antes de cada
+commit muestra los archivos en stage agrupados por carpeta y exige una confirmación
+explícita. No intenta adivinar si un commit mezcla temas por su tamaño: se probó contra
+los commits reales de este repo y el commit problemático (13 archivos, 1039 líneas) es
+más chico que dos commits legítimos de un solo tema (18 archivos/1901 líneas, y 16
+archivos/1141 líneas). El tamaño no es una señal confiable. Lo único que el hook
+garantiza es que alguien mire antes de confirmar.
+
+Para activarlo, una vez por clon del repositorio:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Sin activar, el hook no hace nada: es opt-in porque tocar `core.hooksPath` es una
+decisión de quien clona, no algo que deba imponerse solo.
+
 ## Entorno
 
 - **Python 3.13** del instalador oficial, en
