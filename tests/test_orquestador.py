@@ -986,6 +986,53 @@ def probar_dos_clases_no_se_fusionan() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def probar_las_notificaciones_no_se_pierden() -> None:
+    """
+    Una actualizacion de Homebrew dejo terminal-notifier sin poder entregar
+    avisos, y el codigo no miraba el resultado: el estudiante habria dejado de
+    recibir notificaciones sin enterarse. Ahora un fallo cae a la via nativa.
+    """
+    print("\n== las notificaciones no se pierden en silencio ==")
+    from orquestador import notificaciones as n
+
+    original_tn, original_as = n._con_terminal_notifier, n._con_applescript
+    try:
+        # Cuando la via preferida funciona, no se usa el respaldo.
+        usados = []
+        n._con_terminal_notifier = lambda *a, **k: usados.append("tn") or True
+        n._con_applescript = lambda *a, **k: usados.append("as")
+        n._notificar("t", "s", "m")
+        check("si terminal-notifier entrega, no se duplica el aviso", usados == ["tn"], str(usados))
+
+        # Cuando falla, el aviso igual llega.
+        usados.clear()
+        n._con_terminal_notifier = lambda *a, **k: usados.append("tn") or False
+        n._notificar("t", "s", "m")
+        check("si terminal-notifier falla, se usa la via nativa",
+              usados == ["tn", "as"], str(usados))
+
+        # Y si las dos fallan, no revienta el procesamiento.
+        def explota(*a, **k):
+            raise RuntimeError("sin notificaciones")
+        n._con_terminal_notifier = lambda *a, **k: False
+        n._con_applescript = explota
+        try:
+            n._notificar("t", "s", "m")
+            check("un aviso que no se puede entregar no tumba la clase", True)
+        except Exception as e:
+            check("un aviso que no se puede entregar no tumba la clase", False,
+                  f"propago {type(e).__name__}")
+    finally:
+        n._con_terminal_notifier, n._con_applescript = original_tn, original_as
+
+    # Pase lo que pase, queda registrado en Estado.txt.
+    import inspect
+    check("todo aviso queda anotado antes de intentar entregarlo",
+          "_anotar_estado" in inspect.getsource(n._notificar))
+    check("el texto se escapa antes de pasarlo a AppleScript",
+          "_escapar_applescript" in inspect.getsource(n._con_applescript))
+
+
 def probar_aviso_anki() -> None:
     print("\n== aviso cuando Anki esta cerrado ==")
     from orquestador import anki_connect, dialogo_anki
@@ -1518,6 +1565,7 @@ if __name__ == "__main__":
     probar_audio_largo_se_corta_solo()
     probar_el_borrado_no_alcanza_tus_carpetas()
     probar_dos_clases_no_se_fusionan()
+    probar_las_notificaciones_no_se_pierden()
     probar_aviso_anki()
     probar_titulo_nunca_falta()
     probar_gate_de_rutas()

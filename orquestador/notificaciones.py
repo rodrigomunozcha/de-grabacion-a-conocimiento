@@ -40,6 +40,25 @@ def _notificar(
     partes = [p for p in (titulo, subtitulo, mensaje) if p]
     _anotar_estado(" - ".join(partes))
 
+    # Entregar el aviso va dentro de un try propio: el estado ya quedo escrito
+    # arriba, y ninguna falla avisando puede costarle la clase al estudiante.
+    try:
+        if _con_terminal_notifier(titulo, subtitulo, mensaje, url_al_hacer_clic, sonido):
+            return
+        _con_applescript(titulo, subtitulo, mensaje)
+    except Exception:
+        pass
+
+
+def _con_terminal_notifier(
+    titulo: str, subtitulo: str, mensaje: str, url_al_hacer_clic: str | None, sonido: bool
+) -> bool:
+    """
+    Via preferida: es la unica que permite abrir el .docx al hacer clic en el
+    aviso. Devuelve False si no se pudo entregar.
+    """
+    if not Path(TERMINAL_NOTIFIER).exists():
+        return False
     comando = [
         TERMINAL_NOTIFIER,
         "-title", titulo,
@@ -51,7 +70,41 @@ def _notificar(
         comando += ["-sound", "default"]
     if url_al_hacer_clic:
         comando += ["-open", url_al_hacer_clic]
-    subprocess.run(comando, capture_output=True, text=True)
+    try:
+        return subprocess.run(comando, capture_output=True, text=True).returncode == 0
+    except Exception:
+        return False
+
+
+def _con_applescript(titulo: str, subtitulo: str, mensaje: str) -> None:
+    """
+    Respaldo cuando terminal-notifier no puede entregar el aviso.
+
+    Existe porque una actualizacion de Homebrew lo dejo de golpe sin funcionar:
+    la version 3.0.0 pide permiso de notificaciones por una via que exige un
+    binario firmado, y el de Homebrew no lo esta, asi que falla con
+    "UNErrorDomain error 1". Peor todavia, el codigo no miraba el resultado, de
+    modo que el estudiante habria dejado de recibir avisos sin enterarse: el
+    procesamiento seguiria funcionando y el aviso simplemente no llegaria.
+
+    No reemplaza a terminal-notifier: por esta via el aviso no se puede abrir
+    con un clic. Pero avisar sin poder hacer clic es muchisimo mejor que no
+    avisar. La ruta al documento igual queda en Estado.txt.
+    """
+    partes = [p for p in (subtitulo, mensaje) if p]
+    cuerpo = " - ".join(partes) or titulo
+    guion = (
+        f"display notification {_escapar_applescript(cuerpo)} "
+        f"with title {_escapar_applescript(titulo)}"
+    )
+    try:
+        subprocess.run(["osascript", "-e", guion], capture_output=True, text=True)
+    except Exception:
+        pass  # ya quedo en Estado.txt; un aviso no puede tumbar una clase
+
+
+def _escapar_applescript(texto: str) -> str:
+    return '"' + texto.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def notificar_inicio(cantidad: int) -> None:

@@ -170,6 +170,20 @@ Si el Mac se apaga en mitad de un procesamiento, la corrida queda a medias. Se d
 python3 -m orquestador.bitacora
 ```
 
+## Revisar que todo siga funcionando
+
+El sistema se apoya en herramientas que se actualizan por fuera (ffmpeg y
+terminal-notifier vienen de Homebrew, el motor de Claude Code de npm). Una
+actualización puede romper algo sin aviso. Después de un `brew upgrade`, un
+`npm update` o una actualización de macOS, conviene correr:
+
+```bash
+python3 -m orquestador.verificar
+```
+
+Comprueba que todo esté en su lugar y responda, sin consumir cuota. Distingue
+entre lo que impide procesar clases y lo que es solo un aviso.
+
 ## Si algo no funciona
 
 - **La app no hace nada al hacer doble clic:** confirma que tu Python 3.13 está
