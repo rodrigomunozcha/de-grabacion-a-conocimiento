@@ -1033,6 +1033,44 @@ def probar_las_notificaciones_no_se_pierden() -> None:
           "_escapar_applescript" in inspect.getsource(n._con_applescript))
 
 
+def probar_error_de_sesion_se_explica() -> None:
+    """
+    La sesion de Claude Code caduco y el estudiante leyo "La skill termino con
+    error: success", que no dice nada. La explicacion venia en el campo
+    `result` del SDK y no se estaba mirando, asi que no habia forma de saber
+    que lo que tocaba era volver a iniciar sesion.
+    """
+    print("\n== un error del modelo dice que paso de verdad ==")
+    from orquestador.skill_runner import _es_sesion_caducada, describir_error_sdk
+
+    class Falso:
+        subtype = "success"
+        is_error = True
+        result = "Failed to authenticate: OAuth session expired and could not be refreshed"
+        api_error_status = None
+        terminal_reason = None
+        errors = None
+
+    texto = describir_error_sdk(Falso())
+    check("el mensaje incluye la causa real", "OAuth session expired" in texto)
+    check("y dice que hay que iniciar sesion de nuevo", "iniciar sesion" in texto.lower())
+    check("y nombra el comando exacto", "node_modules/.bin/claude" in texto)
+    check("y avisa que la transcripcion no se perdio", "transcripcion" in texto.lower())
+    check("el subtype enganoso ya no va solo", texto.strip() != "subtype=success")
+
+    check("reconoce una sesion caducada", _es_sesion_caducada(Falso.result))
+    check("no confunde otro error con sesion caducada",
+          not _es_sesion_caducada("API Error: 429 rate limit exceeded"))
+
+    # Un error distinto se sigue describiendo, sin inventar el diagnostico.
+    class Otro(Falso):
+        result = "API Error: 529 overloaded"
+    texto_otro = describir_error_sdk(Otro())
+    check("otro error se muestra tal cual", "529" in texto_otro)
+    check("y no sugiere iniciar sesion sin motivo",
+          "node_modules/.bin/claude" not in texto_otro)
+
+
 def probar_aviso_anki() -> None:
     print("\n== aviso cuando Anki esta cerrado ==")
     from orquestador import anki_connect, dialogo_anki
@@ -1566,6 +1604,7 @@ if __name__ == "__main__":
     probar_el_borrado_no_alcanza_tus_carpetas()
     probar_dos_clases_no_se_fusionan()
     probar_las_notificaciones_no_se_pierden()
+    probar_error_de_sesion_se_explica()
     probar_aviso_anki()
     probar_titulo_nunca_falta()
     probar_gate_de_rutas()

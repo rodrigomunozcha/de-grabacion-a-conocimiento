@@ -143,6 +143,52 @@ def _cli_de_claude() -> None:
         _anotar(FALLA, "el CLI de Claude Code no responde", f"{type(e).__name__}")
 
 
+def _sesion_de_claude() -> None:
+    """
+    Comprueba que la sesion siga viva haciendo una llamada minima de verdad.
+
+    Existe porque la sesion caduco sin aviso y la clase se descubrio rota
+    despues de quince minutos transcribiendo: la transcripcion corre primero y
+    es lo lento, asi que enterarse recien al llegar al modelo es enterarse en
+    el peor momento. Preguntar aca cuesta unos segundos y un puñado de tokens.
+    """
+    import asyncio
+
+    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+
+    from .skill_runner import _es_sesion_caducada
+
+    async def preguntar() -> tuple[bool, str]:
+        opciones = ClaudeAgentOptions(
+            cwd=str(RAIZ), setting_sources=[], allowed_tools=[],
+            permission_mode="bypassPermissions",
+            cli_path=str(RAIZ / "node_modules" / ".bin" / "claude"), max_turns=1,
+        )
+        detalle = ""
+        try:
+            async for mensaje in query(prompt="Responde solo: ok", options=opciones):
+                if isinstance(mensaje, ResultMessage) and mensaje.is_error:
+                    detalle = (getattr(mensaje, "result", None) or mensaje.subtype).strip()
+        except Exception as e:
+            if not detalle:
+                detalle = f"{type(e).__name__}: {e}"
+        return (not detalle), detalle
+
+    try:
+        viva, detalle = asyncio.run(preguntar())
+    except Exception as e:
+        _anotar(FALLA, "no se pudo comprobar la sesion de Claude", f"{type(e).__name__}")
+        return
+
+    if viva:
+        _anotar(OK, "sesion de Claude Code", "activa, el modelo responde")
+    elif _es_sesion_caducada(detalle):
+        _anotar(FALLA, "la sesion de Claude Code caduco",
+                "inicia sesion de nuevo con: node_modules/.bin/claude")
+    else:
+        _anotar(FALLA, "el modelo no responde", detalle[:80])
+
+
 def _anki() -> None:
     from . import anki_connect
 
@@ -176,6 +222,7 @@ def main() -> int:
     print("\nEl pipeline")
     _modulos_del_pipeline()
     _cli_de_claude()
+    _sesion_de_claude()
     _configuracion()
 
     print("\nLo que ves mientras trabaja")

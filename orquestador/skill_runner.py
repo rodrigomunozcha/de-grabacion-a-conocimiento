@@ -202,7 +202,25 @@ def describir_error_sdk(mensaje) -> str:
     en ResultMessage. El mensaje que se veia era "La skill termino con error:
     success", que no dice absolutamente nada de lo que paso.
     """
-    trozos = [f"subtype={mensaje.subtype}"]
+    # `result` es donde el SDK deja la explicacion en palabras, y era lo unico
+    # que traia el fallo mas util de todos: "Failed to authenticate: OAuth
+    # session expired and could not be refreshed", o sea que la sesion de
+    # Claude Code habia caducado. Sin esta linea el estudiante leia
+    # "subtype=success" y no tenia forma de saber que le tocaba volver a
+    # iniciar sesion. Va primero porque es lo que de verdad se entiende.
+    trozos = []
+    texto = (getattr(mensaje, "result", None) or "").strip()
+    if texto:
+        trozos.append(texto[:300])
+        if _es_sesion_caducada(texto):
+            trozos.append(
+                "La sesion de Claude Code caduco: hay que iniciar sesion de nuevo. "
+                "Abre Terminal en la carpeta del proyecto y corre "
+                "'node_modules/.bin/claude'. La transcripcion de esta clase ya quedo "
+                "guardada, asi que despues basta con volver a hacer clic y retoma desde ahi"
+            )
+
+    trozos.append(f"subtype={mensaje.subtype}")
     estado = getattr(mensaje, "api_error_status", None)
     if estado:
         trozos.append(f"HTTP {estado}")
@@ -212,7 +230,12 @@ def describir_error_sdk(mensaje) -> str:
     errores = getattr(mensaje, "errors", None)
     if errores:
         trozos.append("; ".join(str(e) for e in errores))
-    return ", ".join(trozos)
+    return " | ".join(trozos)
+
+
+def _es_sesion_caducada(texto: str) -> bool:
+    minusculas = texto.lower()
+    return "authenticate" in minusculas or "oauth" in minusculas or "session expired" in minusculas
 
 
 def normalizar_resultado(resultado: dict, titulo_respaldo: str) -> dict:
