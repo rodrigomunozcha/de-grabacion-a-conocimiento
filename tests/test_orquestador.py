@@ -217,15 +217,15 @@ def probar_dialogo_nunca_descarta_solo() -> None:
 
         # Abandonar a mitad de elegir el ramo tampoco puede descartar.
         dlg._mostrar_dialogo_principal = lambda _t: dlg.OPCION_APLICAR_SKILLS
-        original_ramo = dlg._elegir_ramo
-        dlg._elegir_ramo = lambda _c: None
+        original_ramo = dlg.elegir_ramo
+        dlg.elegir_ramo = lambda _c: None
         try:
             accion = dlg.preguntar_que_hacer({"archivos": [], "fecha": "1970-01-20",
                                               "dia_semana": "martes"}, {})["accion"]
             check("abandonar la eleccion de ramo -> solo_transcribir",
                   accion == "solo_transcribir", f"dio '{accion}'")
         finally:
-            dlg._elegir_ramo = original_ramo
+            dlg.elegir_ramo = original_ramo
 
     finally:
         dlg._mostrar_dialogo_principal = original
@@ -331,6 +331,68 @@ def probar_el_nombre_del_archivo_manda_sobre_el_dia() -> None:
     por_dia = deteccion.resolver_ramo_de_grabacion(["Nota de voz 3.m4a"], miercoles, config)
     check("sin nombre util se mantiene el comportamiento de siempre",
           por_dia and por_dia["nombre"] == "BIOLOGÍA CELULAR", f"dio {por_dia}")
+
+
+def probar_grabacion_aparte_nunca_deduce_el_ramo() -> None:
+    """
+    El agujero que este flujo tapa: una grabacion que no es clase, subida un
+    dia que si tiene ramo en el horario, se archivaba bajo ese ramo sin
+    preguntar. Paso en vivo el 26-08-2026 (miercoles) con una reunion de un
+    ramo anexo, que quedo como BIOLOGIA CELULAR y ademas choco de
+    numero con la clase real de ese mismo miercoles.
+
+    Lo que se prueba aca es que por esta entrada el dia de la semana no
+    participa en la decision: se manda lo que el estudiante eligio, aunque la
+    fecha caiga justo sobre un ramo del horario.
+    """
+    print("\n== la grabacion aparte nunca deduce el ramo del dia ==")
+    from orquestador import procesar_aparte as pa
+
+    with tempfile.TemporaryDirectory() as tmp:
+        audio = Path(tmp) / "reunion.m4a"
+        audio.write_bytes(b"audio falso")
+
+        config_falsa = {
+            "ramos": {"miercoles": {"nombre": "BIOLOGIA CELULAR",
+                                    "perfil_whisper": "es-chile"}},
+            "ramos_adicionales": {},
+        }
+        originales = (pa.cargar_config, pa.elegir_ramo, pa._pedir_fecha, pa._confirmar)
+        try:
+            pa.cargar_config = lambda: config_falsa
+            pa.elegir_ramo = lambda _c: ("EIC - EVALUACION INTERMEDIA DE CONOCIMIENTOS",
+                                         "es-chile", "")
+            # Un miercoles: el dia que en el horario es BIOLOGIA CELULAR.
+            pa._pedir_fecha = lambda _d: date(2026, 8, 26)
+            pa._confirmar = lambda _a, _r, _f: True
+
+            plan = pa.preparar([str(audio)])
+            check("respeta el ramo elegido, no el del dia de la semana",
+                  plan["ramo"] == "EIC - EVALUACION INTERMEDIA DE CONOCIMIENTOS",
+                  f"dio '{plan['ramo']}'")
+            check("el dia miercoles no cambia nada",
+                  "BIOLOGIA CELULAR" not in plan["ramo"])
+
+            # Cancelar en cualquier paso no puede tocar el audio.
+            for paso, parche in [
+                ("al elegir el ramo", lambda: setattr(pa, "elegir_ramo", lambda _c: None)),
+                ("al poner la fecha", lambda: setattr(pa, "_pedir_fecha", lambda _d: None)),
+                ("al confirmar", lambda: setattr(pa, "_confirmar", lambda _a, _r, _f: False)),
+            ]:
+                pa.cargar_config = lambda: config_falsa
+                pa.elegir_ramo = lambda _c: ("EIC", "es-chile", "")
+                pa._pedir_fecha = lambda _d: date(2026, 8, 26)
+                pa._confirmar = lambda _a, _r, _f: True
+                parche()
+                check(f"cancelar {paso} -> no devuelve plan", pa.preparar([str(audio)]) is None)
+                check(f"cancelar {paso} -> el audio sigue donde estaba", audio.is_file())
+        finally:
+            pa.cargar_config, pa.elegir_ramo, pa._pedir_fecha, pa._confirmar = originales
+
+    import inspect
+    fuente = inspect.getsource(pa.preparar)
+    check("preparar() no consulta la tabla dia->ramo",
+          "resolver_ramo" not in fuente and "weekday" not in fuente)
 
 
 def probar_bitacora_deshace_todo() -> None:
@@ -1685,6 +1747,7 @@ if __name__ == "__main__":
     probar_archivado_no_destructivo()
     probar_dialogo_nunca_descarta_solo()
     probar_el_nombre_del_archivo_manda_sobre_el_dia()
+    probar_grabacion_aparte_nunca_deduce_el_ramo()
     probar_bitacora_deshace_todo()
     probar_bitacora_no_borra_lo_ajeno()
     probar_seccion_critica()

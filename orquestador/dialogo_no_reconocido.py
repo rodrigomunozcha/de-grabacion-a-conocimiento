@@ -134,7 +134,13 @@ def _crear_ramo_nuevo(config: dict) -> tuple[str, str, str] | None:
     return nombre, perfil_whisper, contexto
 
 
-def _elegir_ramo(config: dict) -> tuple[str, str, str] | None:
+def elegir_ramo(config: dict) -> tuple[str, str, str] | None:
+    """
+    Publica a proposito: la usa procesar_aparte.py, que es la otra entrada por
+    la que se elige un ramo a mano. Las dos tienen que ofrecer exactamente la
+    misma lista y el mismo camino para crear un ramo nuevo, o el estudiante
+    veria dos catalogos de ramos distintos segun por donde entro.
+    """
     ramos_horario = {r["nombre"]: {"perfil_whisper": r["perfil_whisper"], "contexto": ""} for r in config["ramos"].values()}
     ramos_adicionales = config.get("ramos_adicionales", {})
     info_por_ramo = {**ramos_horario, **ramos_adicionales}
@@ -164,7 +170,7 @@ def preguntar_que_hacer(trabajo: dict, config: dict) -> dict:
         return {"accion": "ignorar"}
 
     if boton == OPCION_APLICAR_SKILLS:
-        seleccion = _elegir_ramo(config)
+        seleccion = elegir_ramo(config)
         if seleccion is None:
             # Abandono a mitad de elegir el ramo. Antes esto descartaba la
             # grabacion, que es mucho mas de lo que el estudiante pidio.
