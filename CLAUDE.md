@@ -7,12 +7,32 @@ Aquí van las reglas que valen para todo el repositorio. Las reglas de la corrid
 automatizada, que son de detalle fino y solo aplican al pipeline, están en
 `orquestador/CLAUDE.md`.
 
-## Idioma y estilo
+## Español neutro, siempre
 
-- Todo en español neutro: código, comentarios, documentación, mensajes al usuario y
-  commits.
-- Sin em-dash (—) ni punto y coma. Usa " - " con espacios a ambos lados, o parte la
-  frase en dos.
+Es la máxima principal del usuario, por encima de cualquier detalle técnico. Aplica a
+**todo**: la conversación con él, el código, los comentarios, la documentación, los
+mensajes de commit y los textos que el sistema le muestra.
+
+**Nada de voseo rioplatense.** Es la forma concreta en que ya falló:
+
+| Nunca | Siempre |
+|---|---|
+| tenés, querés, podés, hacés | tienes, quieres, puedes, haces |
+| escribís, apretás, elegís | escribes, aprietas, eliges |
+| agregá, apretá, mirá, revisá | agrega, aprieta, mira, revisa |
+| vos, sos, contame, decime | tú, eres, cuéntame, dime |
+
+Tampoco mexicanismos, españolismos ni chilenismos, aunque él sea chileno. Neutro
+significa que funciona en cualquier país hispanohablante.
+
+Sin em-dash (—) ni punto y coma. Usa " - " con espacios a ambos lados, o parte la
+frase en dos.
+
+El riesgo real no está en el código, que se revisa con calma. Está en los mensajes de
+cierre al final de una sesión larga, cuando baja la guardia. Ahí fue donde falló.
+
+## Estilo y claridad
+
 - Los comentarios explican **por qué**, no qué. El estilo del repo es dejar dicho qué se
   probó y qué falló, para que nadie lo vuelva a intentar. Ver `skill_runner.py`, donde
   cada decisión trae la razón y lo verificado en vivo. Mantén ese nivel.
