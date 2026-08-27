@@ -48,6 +48,11 @@ Mac, ver [Privacidad](#privacidad).)*
 Todo el uso del día a día pasa por dos apps de doble clic. Nunca necesitas abrir Terminal
 para usarlo, solo para instalarlo la primera vez.
 
+El ramo sale del nombre que le pusiste al archivo, y el día de la semana queda como
+respaldo. Si el nombre no corresponde a ningún ramo conocido - la reunión de un ramo
+anexo, una conversación que quieras poder citar después - el sistema se detiene y
+pregunta en vez de archivarla por su cuenta.
+
 ## Decisiones técnicas
 
 **El revisor es una sesión aparte, a propósito.** Nadie mira el material antes de que se
@@ -78,6 +83,7 @@ orquestador/          El código del pipeline
   config.json          Tu configuracion real (rutas, ramos). No se sube al repo.
   config.example.json  Plantilla de referencia para armar tu propio config.json
   revisor.py           El segundo agente que revisa las notas antes de archivarlas
+  ramo_por_nombre.py   Lee el ramo del nombre del archivo, antes de mirar el calendario
   carpetas.py          Ubica la carpeta de cada ramo en tu vault (y la recuerda)
   regenerar.py         Rehace el .docx de una clase ya procesada, con el diseño actual
   logs/uso.jsonl       Cuanto consumio cada llamada al modelo

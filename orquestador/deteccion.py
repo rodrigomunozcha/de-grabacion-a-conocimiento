@@ -20,6 +20,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
+from . import ramo_por_nombre
 from .config import cargar_config, DIAS_SEMANA
 
 EXTENSIONES_AUDIO = {".m4a", ".mp3", ".wav"}
@@ -167,6 +168,32 @@ def resolver_ramo(fecha: date, config: dict) -> dict | None:
     return config["ramos"].get(dia_semana)
 
 
+def resolver_ramo_de_grabacion(
+    nombres_archivo: list[str], fecha: date, config: dict
+) -> dict | None:
+    """
+    El ramo de una grabacion, mirando primero el nombre del archivo y despues
+    el calendario. Devuelve None cuando no hay que asumir nada y corresponde
+    preguntar (ver dialogo_no_reconocido.py).
+
+    El orden importa y es el arreglo de un caso real: el dia de la semana no
+    distingue la clase del miercoles de una reunion grabada el mismo miercoles,
+    y por eso una reunion de un ramo anexo se archivo como clase el 26-08-2026.
+    El nombre del archivo si lo distinguia. Ver ramo_por_nombre.py para la
+    calibracion contra los nombres reales.
+
+    Un nombre que trae palabras reales pero no calza con ningun ramo conocido
+    NO se cae al dia de la semana: eso es evidencia de que la grabacion no es
+    una clase, y tratarla como tal es exactamente el error que se corrige aqui.
+    """
+    estado, ramo_info = ramo_por_nombre.resolver(nombres_archivo, config)
+    if estado == ramo_por_nombre.RECONOCIDO:
+        return ramo_info
+    if estado == ramo_por_nombre.NO_CALZA:
+        return None
+    return resolver_ramo(fecha, config)
+
+
 def calcular_semana_semestre(fecha: date, fecha_inicio_semestre: str) -> int:
     inicio = datetime.strptime(fecha_inicio_semestre, "%Y-%m-%d").date()
     return ((fecha - inicio).days // 7) + 1
@@ -200,7 +227,9 @@ def construir_trabajos(config: dict | None = None) -> list[dict]:
         if clave in emitidos:
             continue
         archivos_en_orden = sorted(archivos, key=lambda p: p.stat().st_mtime)
-        ramo_info = resolver_ramo(fecha, config)
+        ramo_info = resolver_ramo_de_grabacion(
+            [a.name for a in archivos_en_orden], fecha, config
+        )
         trabajo = {
             "clave": clave,
             "fecha": fecha.isoformat(),

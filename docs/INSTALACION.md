@@ -107,13 +107,34 @@ Puedes volver a abrir esta misma app cuando quieras cambiar cualquiera de estos 
 3. Espera la notificación. Puede tardar unos minutos (transcribir + aplicar el método de
    estudio). Vas a recibir avisos de progreso y uno final con el nombre de la clase; si
    haces clic en la notificación final, se abre el `.docx` generado.
-4. Si el día de la semana de la grabación no corresponde a ningún ramo de tu horario
-   (por ejemplo una recuperación en otro día), va a aparecer una ventana preguntando qué
-   hacer con ese archivo.
+4. Si el sistema no puede saber a qué ramo corresponde la grabación, va a aparecer una
+   ventana preguntando qué hacer con ese archivo. Pasa cuando el nombre no corresponde a
+   ningún ramo conocido, o cuando el día tampoco lo aclara (una recuperación en sábado,
+   por ejemplo).
 
 Todo lo que pasó queda también anotado en `Estado.txt` (en la raíz del proyecto), por si
 te lo perdiste o quieres confirmar que no quedó pegado. Se abre con doble clic, como
 cualquier archivo de texto.
+
+### Grabaciones que no son una clase del horario
+
+El ramo sale del nombre que le pusiste al archivo. Si escribes
+`Historia contemporánea 24.08.26.m4a`, el sistema reconoce el ramo aunque lo hayas escrito
+con otra tilde, en singular o con una letra de más. El día de la semana solo se usa cuando
+el nombre no dice nada (`Nota de voz 3.m4a`).
+
+Eso deja lugar para grabar cosas que no son clases: una charla, una ayudantía o
+la reunión de un ramo anexo. Nómbralas por lo que son
+(`Reunión de coordinación 30.08.m4a`) y déjalas en `Input/` como cualquier otra.
+
+Como el nombre no corresponde a ningún ramo conocido, el sistema se detiene y te pregunta
+qué hacer con ella, en vez de archivarla bajo la clase de ese día. Puedes elegir uno de
+tus ramos, crear uno nuevo ahí mismo (queda guardado para la próxima), o dejarla solo
+transcrita.
+
+Los ramos creados así no tienen día fijo, y sus grabaciones se numeran por orden
+cronológico entre las ya archivadas de ese ramo, no por semana de semestre. Puedes
+procesarlas en cualquier orden y la numeración se acomoda sola.
 
 ### Ver cómo va, y detenerlo si hace falta
 
