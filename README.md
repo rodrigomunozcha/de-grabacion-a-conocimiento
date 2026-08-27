@@ -49,9 +49,11 @@ Todo el uso del día a día pasa por dos apps de doble clic. Nunca necesitas abr
 para usarlo, solo para instalarlo la primera vez.
 
 El ramo sale del nombre que le pusiste al archivo, y el día de la semana queda como
-respaldo. Si el nombre no corresponde a ningún ramo conocido - la reunión de un ramo
-anexo, una conversación que quieras poder citar después - el sistema se detiene y
-pregunta en vez de archivarla por su cuenta.
+respaldo. Antes de empezar, una ventana te muestra todas las grabaciones que encontró y a
+qué ramo va cada una: confirmas de una vez, y de ahí en adelante no hay más
+interrupciones. Lo que el sistema no reconoce - la reunión de un ramo anexo, una
+conversación que quieras poder citar después - te lo pregunta ahí, en vez de archivarlo
+por su cuenta.
 
 ## Decisiones técnicas
 
@@ -84,9 +86,11 @@ orquestador/          El código del pipeline
   config.example.json  Plantilla de referencia para armar tu propio config.json
   revisor.py           El segundo agente que revisa las notas antes de archivarlas
   ramo_por_nombre.py   Lee el ramo del nombre del archivo, antes de mirar el calendario
+  pantalla_confirmacion.py  Pregunta por todas las grabaciones juntas antes de empezar
   carpetas.py          Ubica la carpeta de cada ramo en tu vault (y la recuerda)
   regenerar.py         Rehace el .docx de una clase ya procesada, con el diseño actual
   logs/uso.jsonl       Cuanto consumio cada llamada al modelo
+ventana_confirmacion/  La ventana nativa que confirma el ramo (Swift, se compila aquí)
 .claude/skills/        La skill que aplica el método de estudio sobre cada transcripción
 docs/                  Instalación completa, uso diario y detalles técnicos
 ```

@@ -333,6 +333,153 @@ def probar_el_nombre_del_archivo_manda_sobre_el_dia() -> None:
           por_dia and por_dia["nombre"] == "BIOLOGÍA CELULAR", f"dio {por_dia}")
 
 
+def probar_pantalla_de_confirmacion() -> None:
+    """
+    La pantalla pregunta por todas las grabaciones juntas antes de empezar, y
+    reemplaza al dialogo de a una por vez. Lo que se prueba es que ningun
+    camino de fallo deje al estudiante peor que antes de que existiera:
+
+    - Sin el binario compilado se sigue por el dialogo viejo, que SI pregunta.
+      Caer a "no hacer nada" seria dejar de preguntar algo que hoy se pregunta.
+    - Con el binario presente pero fallando (no arranca, devuelve basura, vence
+      el tiempo), se procesa lo reconocido y lo dudoso queda para el proximo
+      clic. Es el comportamiento anterior a la pantalla.
+    - Una respuesta invalida no se cree a medias: cae entera al defecto.
+    """
+    print("\n== la pantalla de confirmacion nunca deja al usuario peor ==")
+    from orquestador import pantalla_confirmacion as pc
+
+    config = {
+        "ramos": {"miercoles": {"nombre": "BIOLOGÍA CELULAR", "perfil_whisper": "es-chile"}},
+        "ramos_adicionales": {},
+    }
+    trabajos = [
+        {"clave": "k1", "archivos": ["/x/Biología celular 26.08.26.m4a"],
+         "fecha": "2026-08-26", "dia_semana": "miercoles",
+         "ramo": "BIOLOGÍA CELULAR", "reconocido": True},
+        {"clave": "k2", "archivos": ["/x/Evaluación conocimientos intermedios 26.08.26.m4a"],
+         "fecha": "2026-08-26", "dia_semana": "miercoles", "ramo": None, "reconocido": False},
+    ]
+
+    # La duracion se mide con ffprobe sobre archivos que aqui no existen.
+    original_duracion = pc.duracion_audio_segundos
+    pc.duracion_audio_segundos = lambda _r: None
+    original_binario = pc.BINARIO
+    try:
+        descripcion = pc.describir(trabajos, config)
+        check("describe cada grabacion con el origen de su ramo",
+              descripcion["grabaciones"][0]["origen"] == "nombre"
+              and descripcion["grabaciones"][1]["origen"] is None,
+              str([g["origen"] for g in descripcion["grabaciones"]]))
+        check("ofrece los ramos conocidos para elegir",
+              "BIOLOGÍA CELULAR" in descripcion["ramos"])
+
+        # Sin binario: hay que seguir preguntando por el camino viejo.
+        pc.BINARIO = Path("/no/existe/ConfirmarGrabaciones")
+        check("sin el binario compilado se cae al dialogo de siempre",
+              pc.preguntar(trabajos, config) is None)
+
+        # Con binario, pero la ventana falla o vence el tiempo.
+        pc.BINARIO = original_binario
+        por_defecto = pc._decisiones_por_defecto(descripcion)
+        check("por defecto, lo reconocido se procesa",
+              por_defecto["k1"]["que_hacer"] == pc.PROCESAR)
+        check("por defecto, lo dudoso queda para el proximo clic",
+              por_defecto["k2"]["que_hacer"] == pc.OMITIR)
+
+        # Respuestas que no se pueden creer.
+        invalidas = [
+            ("una clave que no existe", {"accion": "procesar", "decisiones": [
+                {"clave": "inventada", "que_hacer": "procesar", "ramo": "X"}]}),
+            ("una accion desconocida", {"accion": "procesar", "decisiones": [
+                {"clave": "k1", "que_hacer": "borrar_todo"}]}),
+            ("procesar sin ramo", {"accion": "procesar", "decisiones": [
+                {"clave": "k1", "que_hacer": "procesar", "ramo": "  "}]}),
+            ("la ventana se cerro", {"accion": "cerrada"}),
+            ("vencio el tiempo", {"accion": "timeout"}),
+        ]
+        for nombre, respuesta in invalidas:
+            check(f"{nombre} -> se ignora entera",
+                  pc._validar(respuesta, descripcion) is None)
+
+        # Una respuesta valida si se respeta.
+        buena = {"accion": "procesar", "decisiones": [
+            {"clave": "k1", "que_hacer": "procesar", "ramo": "BIOLOGÍA CELULAR"},
+            {"clave": "k2", "que_hacer": "procesar", "ramo": "EIC", "ramo_nuevo": True},
+        ]}
+        validadas = pc._validar(buena, descripcion)
+        check("una respuesta valida se respeta", validadas is not None
+              and validadas["k2"]["ramo"] == "EIC" and validadas["k2"]["ramo_nuevo"])
+
+        # Una grabacion sobre la que la ventana no dijo nada conserva su default.
+        parcial = {"accion": "procesar", "decisiones": [
+            {"clave": "k1", "que_hacer": "omitir"}]}
+        validadas = pc._validar(parcial, descripcion)
+        check("lo que la ventana no menciona conserva su valor por defecto",
+              validadas["k2"]["que_hacer"] == pc.OMITIR, str(validadas))
+    finally:
+        pc.duracion_audio_segundos = original_duracion
+        pc.BINARIO = original_binario
+
+
+def probar_decisiones_de_pantalla_se_aplican() -> None:
+    """
+    Que lo elegido en la pantalla llegue intacto al trabajo, sin transcribir
+    nada ni abrir ventanas. Cubre en particular la numeracion: un ramo elegido
+    a mano no puede numerarse por semana de semestre, que ya dio "Clase -2949"
+    en vivo cuando la fecha caia fuera del calendario.
+    """
+    print("\n== lo elegido en la pantalla se aplica al trabajo ==")
+    from orquestador import transcripcion
+
+    with tempfile.TemporaryDirectory() as tmp:
+        config = {
+            "rutas": {"procesados": tmp},
+            "ramos": {"miercoles": {"nombre": "BIOLOGÍA CELULAR", "perfil_whisper": "es-chile"}},
+            "ramos_adicionales": {},
+        }
+        guardados = []
+        original_guardar = transcripcion.guardar_config
+        transcripcion.guardar_config = lambda c: guardados.append(c)
+        try:
+            # Omitir no toca nada.
+            t = {"clave": "k", "fecha": "2026-08-26", "reconocido": False, "ramo": None}
+            r = transcripcion._aplicar_decision_de_pantalla(t, {"que_hacer": "omitir"}, config)
+            check("omitir -> el trabajo no sigue", r == "omitir")
+
+            # Solo transcribir deja el texto sin archivar bajo ningun ramo.
+            t = {"clave": "k", "fecha": "2026-08-26", "reconocido": True,
+                 "ramo": "BIOLOGÍA CELULAR"}
+            r = transcripcion._aplicar_decision_de_pantalla(
+                t, {"que_hacer": "solo_transcribir"}, config)
+            check("solo transcribir -> sigue pero sin ramo",
+                  r == "seguir" and not t["reconocido"] and t["ramo"] is None)
+
+            # Un ramo nuevo se guarda para que la proxima vez se reconozca solo.
+            t = {"clave": "k", "fecha": "2026-08-26", "reconocido": False, "ramo": None}
+            r = transcripcion._aplicar_decision_de_pantalla(
+                t, {"que_hacer": "procesar", "ramo": "EIC", "ramo_nuevo": True}, config)
+            check("un ramo nuevo queda guardado en config",
+                  "EIC" in config.get("ramos_adicionales", {}) and guardados)
+            check("y el trabajo queda con ese ramo",
+                  t["reconocido"] and t["ramo"] == "EIC")
+            check("numerado por orden cronologico, no por semana de semestre",
+                  t["numeracion"] == "orden" and t["numero_clase"] == 1,
+                  f"dio {t.get('numeracion')} / {t.get('numero_clase')}")
+
+            # Confirmar lo que ya estaba detectado no renumera.
+            t = {"clave": "k", "fecha": "2026-08-26", "reconocido": True,
+                 "ramo": "BIOLOGÍA CELULAR", "numero_clase": 4,
+                 "numeracion": "calendario"}
+            transcripcion._aplicar_decision_de_pantalla(
+                t, {"que_hacer": "procesar", "ramo": "BIOLOGÍA CELULAR"}, config)
+            check("confirmar lo detectado conserva la numeracion por calendario",
+                  t["numero_clase"] == 4 and t["numeracion"] == "calendario",
+                  f"dio {t.get('numeracion')} / {t.get('numero_clase')}")
+        finally:
+            transcripcion.guardar_config = original_guardar
+
+
 def probar_grabacion_aparte_nunca_deduce_el_ramo() -> None:
     """
     El agujero que este flujo tapa: una grabacion que no es clase, subida un
@@ -1747,6 +1894,8 @@ if __name__ == "__main__":
     probar_archivado_no_destructivo()
     probar_dialogo_nunca_descarta_solo()
     probar_el_nombre_del_archivo_manda_sobre_el_dia()
+    probar_pantalla_de_confirmacion()
+    probar_decisiones_de_pantalla_se_aplican()
     probar_grabacion_aparte_nunca_deduce_el_ramo()
     probar_bitacora_deshace_todo()
     probar_bitacora_no_borra_lo_ajeno()

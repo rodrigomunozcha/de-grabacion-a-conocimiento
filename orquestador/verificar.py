@@ -208,6 +208,18 @@ def _icono_de_la_barra() -> None:
                 "se compila con: bash boton_app/compilar_apps.sh")
 
 
+def _ventana_de_confirmacion() -> None:
+    binario = RAIZ / "ventana_confirmacion" / "ConfirmarGrabaciones"
+    if binario.exists():
+        _anotar(OK, "pantalla que confirma el ramo")
+    else:
+        # Un aviso, no un error: sin la ventana el sistema pregunta igual, solo
+        # que de a una grabacion por vez y despues de transcribir cada una.
+        _anotar(AVISO, "falta la pantalla de confirmacion",
+                "se pregunta de a una por vez; se compila con: "
+                "bash boton_app/compilar_apps.sh")
+
+
 def main() -> int:
     print("\nRevision del sistema\n" + "=" * 58)
 
@@ -228,6 +240,7 @@ def main() -> int:
     print("\nLo que ves mientras trabaja")
     _notificaciones()
     _icono_de_la_barra()
+    _ventana_de_confirmacion()
     _anki()
 
     fallas = [r for r in _resultados if r[0] == FALLA]

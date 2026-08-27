@@ -104,13 +104,20 @@ Puedes volver a abrir esta misma app cuando quieras cambiar cualquiera de estos 
    arrástrala sobre el ícono de **"Procesar Clases"** (dentro de `boton_app/`): la copia
    sola a `Input/` y empieza a procesar.
 2. Si ya la dejaste en `Input/` a mano, solo haz doble clic en **"Procesar Clases"**.
-3. Espera la notificación. Puede tardar unos minutos (transcribir + aplicar el método de
+3. Se abre una ventana con todas las grabaciones que encontró y a qué ramo va cada una.
+   Lo que ya está bien no necesita que toques nada: aprietas Procesar y listo. Lo que el
+   sistema no reconoció aparece para que lo elijas de la lista, o escribas un ramo nuevo
+   que queda guardado para la próxima.
+4. Espera la notificación. Puede tardar unos minutos (transcribir + aplicar el método de
    estudio). Vas a recibir avisos de progreso y uno final con el nombre de la clase; si
    haces clic en la notificación final, se abre el `.docx` generado.
-4. Si el sistema no puede saber a qué ramo corresponde la grabación, va a aparecer una
-   ventana preguntando qué hacer con ese archivo. Pasa cuando el nombre no corresponde a
-   ningún ramo conocido, o cuando el día tampoco lo aclara (una recuperación en sábado,
-   por ejemplo).
+
+Todas las preguntas ocurren en el paso 3, antes de que empiece el trabajo pesado. Después
+de apretar Procesar puedes irte: no va a haber más interrupciones.
+
+Si te vas sin contestar esa ventana, a los 10 minutos se cierra sola y no descarta nada:
+las grabaciones que el sistema reconoció se procesan igual, y las que no quedan en
+`Input/` esperando el próximo clic.
 
 Todo lo que pasó queda también anotado en `Estado.txt` (en la raíz del proyecto), por si
 te lo perdiste o quieres confirmar que no quedó pegado. Se abre con doble clic, como

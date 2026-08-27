@@ -28,11 +28,16 @@ osacompile -o "Configurar Sistema.app" ConfigurarSistema.applescript
 if command -v swiftc >/dev/null 2>&1; then
   echo "Compilando el icono de la barra de menu..."
   swiftc -O -o ../barra_menu/BarraEstado ../barra_menu/BarraEstado.swift
-  ICONO="  - barra_menu/BarraEstado            (icono de progreso en la barra superior)"
+  echo "Compilando la ventana de confirmacion..."
+  swiftc -O -o ../ventana_confirmacion/ConfirmarGrabaciones ../ventana_confirmacion/ConfirmarGrabaciones.swift
+  ICONO="  - barra_menu/BarraEstado            (icono de progreso en la barra superior)
+  - ventana_confirmacion/ConfirmarGrabaciones  (pantalla que confirma el ramo antes de empezar)"
 else
-  echo "Aviso: swiftc no esta disponible, se omite el icono de la barra de menu."
-  echo "       Se instala con: xcode-select --install"
-  ICONO="  (sin icono de barra de menu: falta swiftc)"
+  echo "Aviso: swiftc no esta disponible, se omiten el icono de la barra de menu"
+  echo "       y la ventana de confirmacion. El sistema funciona igual: sin la"
+  echo "       ventana, el ramo dudoso se pregunta de a una grabacion por vez."
+  echo "       swiftc se instala con: xcode-select --install"
+  ICONO="  (sin icono de barra ni ventana de confirmacion: falta swiftc)"
 fi
 
 echo

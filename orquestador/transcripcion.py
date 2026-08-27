@@ -7,11 +7,18 @@ por los mismos nucleos). Si un trabajo tiene varias partes de audio (una clase
 grabada en mas de un archivo), se transcriben en el orden cronologico ya
 resuelto por la etapa 2 y se concatena el texto.
 
-Si el ramo fue reconocido, el texto queda listo para que la etapa 4 (skill
-transcripciones-a-conocimiento) lo procese. Si no fue reconocido (dia fuera
-de la tabla dia->ramo), la etapa 8 muestra un dialogo nativo preguntando que
-hacer: solo transcribir (mismo comportamiento de antes), aplicar las skills
-completas igual (con un ramo elegido a mano), o ignorar el archivo.
+Antes de transcribir nada se pregunta por todas las grabaciones juntas, en
+una sola pantalla (pantalla_confirmacion.py). Eso existe porque el estudiante
+esta frente al Mac solo en los primeros segundos, por el clic que acaba de
+dar: preguntar dentro del bucle significaba interrumpirlo 20 minutos despues,
+cuando ya se habia ido.
+
+Si esa pantalla no esta compilada, se sigue por el camino anterior: un dialogo
+nativo por grabacion no reconocida (dialogo_no_reconocido.py), con las mismas
+tres salidas de siempre (solo transcribir, elegir el ramo a mano, o ignorar).
+
+Con el ramo resuelto, el texto queda listo para que la etapa 4 (skill
+transcripciones-a-conocimiento) lo procese.
 """
 import json
 import shutil
@@ -22,8 +29,8 @@ import time
 from datetime import date
 from pathlib import Path
 
-from . import estado_vivo
-from .config import cargar_config, dir_pendientes
+from . import estado_vivo, pantalla_confirmacion, ramo_por_nombre
+from .config import cargar_config, dir_pendientes, guardar_config
 from .deteccion import construir_trabajos, marcar_emitido
 from .dialogo_no_reconocido import preguntar_que_hacer
 from .nombres import calcular_numero_clase_por_orden, slug_pendiente
@@ -280,18 +287,78 @@ def _archivar_ignorado(trabajo: dict, config: dict) -> None:
         shutil.move(str(origen_path), str(destino))
 
 
-def procesar_pendientes(config: dict | None = None, bitacora=None) -> list[dict]:
+def _aplicar_decision_de_pantalla(trabajo: dict, decision: dict, config: dict) -> str:
+    """
+    Traduce lo que se eligio en la pantalla de confirmacion al estado que el
+    resto del pipeline espera. Devuelve que hacer con el trabajo: "seguir",
+    "omitir".
+
+    Un ramo escrito a mano en la pantalla se guarda en config igual que si se
+    hubiera creado por el dialogo, para que la proxima grabacion con ese nombre
+    ya se reconozca sola (ver ramo_por_nombre.py).
+    """
+    que_hacer = decision.get("que_hacer")
+    if que_hacer == pantalla_confirmacion.OMITIR:
+        return "omitir"
+    if que_hacer == pantalla_confirmacion.SOLO_TRANSCRIBIR:
+        trabajo["reconocido"] = False
+        trabajo["ramo"] = None
+        return "seguir"
+
+    ramo = decision.get("ramo")
+    if decision.get("ramo_nuevo") and ramo:
+        # Perfil por defecto a proposito: la pantalla no pregunta el idioma
+        # para no convertir una correccion de una linea en un formulario. Se
+        # ajusta despues en "Configurar Sistema" si el ramo no es en espanol.
+        config.setdefault("ramos_adicionales", {}).setdefault(
+            ramo, {"perfil_whisper": PERFIL_WHISPER_POR_DEFECTO, "contexto": ""}
+        )
+        guardar_config(config)
+
+    ya_estaba = trabajo.get("reconocido") and trabajo.get("ramo") == ramo
+    trabajo["reconocido"] = True
+    trabajo["ramo"] = ramo
+    trabajo["perfil_whisper"] = (
+        ramo_por_nombre.ramos_conocidos(config).get(ramo) or PERFIL_WHISPER_POR_DEFECTO
+    )
+    if not ya_estaba:
+        # Mismo motivo que en el camino del dialogo: la semana de semestre no
+        # aplica a un ramo elegido a mano, y daba numeros sin sentido.
+        trabajo["numero_clase"] = calcular_numero_clase_por_orden(
+            Path(config["rutas"]["procesados"]), ramo, date.fromisoformat(trabajo["fecha"])
+        )
+        trabajo["numeracion"] = "orden"
+    return "seguir"
+
+
+def procesar_pendientes(config: dict | None = None, bitacora=None, decidir=None) -> list[dict]:
+    """
+    `decidir` existe para poder probar sin abrir ventanas. Por defecto es la
+    pantalla de confirmacion, que pregunta por todas las grabaciones juntas
+    antes de empezar. Si devuelve None (binario sin compilar), se sigue por el
+    dialogo de a una por vez, que es el comportamiento anterior.
+    """
     if config is None:
         config = cargar_config()
 
     trabajos = construir_trabajos(config)
+    if decidir is None:
+        decidir = pantalla_confirmacion.preguntar
+    decisiones = decidir(trabajos, config) if trabajos else {}
+
     procesados = []
     for trabajo in trabajos:
         # marcar_emitido() se llama recien cuando cada camino termina bien,
         # no al principio: si la transcripcion falla a mitad de camino, el
         # audio no debe quedar en el limbo marcado como "ya hecho" para
         # siempre. Asi un reintento (otro clic) lo vuelve a tomar.
-        if not trabajo["reconocido"]:
+        if decisiones is not None:
+            decision = decisiones.get(trabajo["clave"])
+            if decision is None:
+                continue  # la pantalla no dijo nada de esta: queda para el proximo clic
+            if _aplicar_decision_de_pantalla(trabajo, decision, config) == "omitir":
+                continue
+        elif not trabajo["reconocido"]:
             decision = preguntar_que_hacer(trabajo, config)
             if decision["accion"] == "ignorar":
                 _archivar_ignorado(trabajo, config)
