@@ -1308,6 +1308,43 @@ def probar_hoja_no_niega_anuncios_que_la_nota_trae() -> None:
           and "<i>la fuente</i>" in enlace, enlace)
 
 
+def probar_una_sola_frase_cuando_no_hubo_anuncios() -> None:
+    """
+    La skill copiaba sus propias reglas dentro de "Lo que el profesor pidio", y
+    la hoja las mostraba tal cual en la tarjeta que mas se cree. Revisadas el
+    14-09-2026, pasaba al menos en 12 de las 21 notas del semestre que traen la
+    seccion, y en las cinco cuyos llamados vinieron vacios. En Desempeño
+    Organizacional del 02-09 decia "Es una respuesta correcta y frecuente: no se
+    rellena con suposiciones", y el 19-08 "Esta seccion queda sin contenido a
+    proposito". Las otras formas eran justificar lo que no se listaba y mandar a
+    revisar las notas de clases anteriores.
+
+    El arreglo esta en la skill: da la frase exacta para el caso vacio y dice que
+    sus reglas no son texto para la nota. No se filtra en Python, porque un
+    filtro por patrones solo reconoce las formas ya vistas y la siguiente llega
+    con otras palabras.
+
+    Esta prueba fija que la frase de la skill sea la misma que la hoja escribe
+    cuando la tarjeta sale de llamados vacios, para que el estudiante lea una
+    sola version venga de donde venga la tarjeta.
+    """
+    print("\n== una sola frase cuando el profesor no anuncio nada ==")
+    from orquestador import hoja_html as h
+
+    frase = "En esta clase el profesor no anunció fechas, entregas ni contenidos de evaluación."
+    skill = RAIZ / ".claude" / "skills" / "transcripciones-a-conocimiento" / "SKILL.md"
+    check("la skill da la frase exacta para el caso sin anuncios",
+          frase in skill.read_text(encoding="utf-8"))
+    check("la hoja escribe esa misma frase cuando los llamados vienen vacios",
+          frase in h.tarjeta_lo_que_pidio("", {"avisos": [], "evaluacion": []}))
+
+    nota = f"## Lo que el profesor pidió\n\n{frase}\n\n## La materia\n\nOtra cosa\n"
+    tarjeta = h.tarjeta_lo_que_pidio(nota, None)
+    check("una nota con solo esa frase la muestra entera en la tarjeta", frase in tarjeta, tarjeta)
+    check("y no la toma por algo que no se pudo comprobar",
+          "No se pudo comprobar" not in tarjeta, tarjeta)
+
+
 def probar_hoja_pule_usos_del_modelo() -> None:
     """
     Dos usos del modelo que se veian mal en la hoja de Desempeño Organizacional
@@ -1590,6 +1627,7 @@ if __name__ == "__main__":
     probar_una_sola_comprobacion_de_vault()
     probar_hoja_se_sanea_y_queda_autocontenida()
     probar_hoja_no_niega_anuncios_que_la_nota_trae()
+    probar_una_sola_frase_cuando_no_hubo_anuncios()
     probar_hoja_degrada_sin_mentir()
     probar_hoja_pule_usos_del_modelo()
     probar_renumerar_corrige_la_hoja()

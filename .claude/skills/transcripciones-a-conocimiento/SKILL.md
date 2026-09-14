@@ -265,10 +265,32 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      - Las fechas van como el profesor las dijo ("el jueves 12", "la última
        semana de septiembre"). No calcules una fecha exacta que él no dio.
      - Si en la clase no hubo ningún anuncio, devuelve las dos listas vacías.
-       Eso es una respuesta correcta y frecuente. No rellenes.
+       Pasa a menudo y no es una falla: no busques con qué llenarlas.
 
      Va en el JSON de abajo y también como primera sección de la nota de
      aprendizaje, con el título "Lo que el profesor pidió".
+
+     **Estas reglas son para que tú decidas qué entra, no texto para la nota.**
+     La sección lleva solo lo que el profesor pidió, cada punto con su cita y,
+     si hace falta, su marca de duda. No expliques lo que dejaste fuera ni por
+     qué. No mandes a revisar otras notas ni pongas enlaces a ellas: lo que se
+     anunció en otra clase ya está en la nota de esa clase, y traerlo aquí pone
+     en la sección que más se cree algo que no salió de esta transcripción. Si
+     en esta clase el profesor retoma un anuncio anterior, eso sí va, con la
+     frase que dijo en esta clase.
+
+     - **Si no hubo ningún anuncio**, la sección queda exactamente así, con la
+       frase copiada tal cual y nada más:
+
+       ```
+       ## Lo que el profesor pidió
+
+       En esta clase el profesor no anunció fechas, entregas ni contenidos de evaluación.
+       ```
+
+     - **Si hubo avisos pero nada sobre evaluación, o al revés**, escribe solo
+       la parte que tiene contenido. La otra no lleva subtítulo ni una frase
+       que diga que quedó vacía.
 
    - Como última línea de tu respuesta de texto (sin nada más en esa línea, JSON
      válido en una sola línea):
