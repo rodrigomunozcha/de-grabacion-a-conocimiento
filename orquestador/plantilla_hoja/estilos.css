@@ -1,0 +1,281 @@
+/* Hoja de repaso de una clase (ver orquestador/hoja_html.py).
+
+   Diseno tomado de las hojas que el estudiante armo a mano para la Solemne 1
+   de Sistemas y de Termodinamica, que fueron las que uso de verdad para estudiar
+   en vez de los .docx. Paleta Solarized de Ethan Schoonover.
+
+   Siempre en modo oscuro, porque asi lo pidio. Las hojas originales seguian la
+   configuracion del Mac: aqui el tema claro no existe en pantalla y solo
+   aparece al imprimir, en blanco y negro puro para gastar el minimo de tinta.
+
+   Cada color tiene un significado fijo y nunca decora. */
+:root{
+  --papel:#002b36; --hundido:#073642; --linea:#12414d; --linea-fina:#0b3742;
+  --tinta:#eee8d5; --tinta-media:#93a1a1; --tinta-suave:#7d8f8f;
+  --azul:#3d9ada; --azul-fondo:#062e3d;
+  --naranjo:#e0672b; --naranjo-fondo:#33241c;
+  --verde:#9aad10; --verde-fondo:#1e2b12;
+  --rojo:#e8564d; --rojo-fondo:#331d1c;
+  --violeta:#8e92d8; --violeta-fondo:#1e2140;
+  --cian:#35bfb4; --cian-fondo:#04333a;
+  --amarillo:#cfa116; --amarillo-fondo:#2e2711;
+  --mono:'Atkinson Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Charter,Georgia,"Liberation Serif",serif;
+  --sans:ui-sans-serif,-apple-system,system-ui,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  padding:20px clamp(12px,3vw,28px) 60px;
+  background:var(--papel);color:var(--tinta);
+  font-family:var(--serif);font-size:15px;line-height:1.45;
+  -webkit-text-size-adjust:100%;
+}
+.hoja{max-width:1180px;margin:0 auto}
+img{max-width:100%}
+
+/* ---------- cabecera ---------- */
+.cab{border-bottom:2px solid var(--tinta);padding-bottom:10px;margin-bottom:14px}
+.cab .ramo{font-family:var(--sans);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--naranjo);margin:0 0 4px;font-weight:600}
+.cab h1{font-size:clamp(22px,3.4vw,30px);line-height:1.05;margin:0 0 6px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.cab .sub{margin:0;color:var(--tinta-media);font-size:13.5px;font-style:italic}
+
+/* Marcas de procedencia. Cada afirmacion dice de donde sale, y sobre todo
+   separa lo que dijo el profesor de lo que se agrego. La marca "?" no estaba
+   en las hojas hechas a mano: la agrega el pipeline porque sus notas si
+   distinguen lo que el audio no dejo confirmar. */
+.leyenda{margin:9px 0 0;font-family:var(--sans);font-size:10px;color:var(--tinta-suave);line-height:1.7}
+.leyenda b{font-family:var(--mono);font-weight:700;color:var(--tinta-media)}
+.f{font-family:var(--mono);font-size:.72em;font-weight:700;color:var(--tinta-suave);vertical-align:.35em;margin-left:.18em;letter-spacing:0}
+.f.cl{color:var(--naranjo)}
+.f.mas{color:var(--violeta)}
+.f.duda{color:var(--rojo)}
+
+/* ---------- rejilla de tarjetas ---------- */
+.bloque{margin:20px 0 0}
+.bloque > h2{
+  font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:700;margin:0 0 8px;padding:4px 0 5px;border-top:2px solid var(--tinta);border-bottom:1px solid var(--linea);
+  display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+}
+.bloque > h2 .peso{font-weight:500;letter-spacing:.04em;text-transform:none;color:var(--tinta-media);font-size:11px;text-align:right}
+.rejilla{columns:2;column-gap:16px}
+@media (max-width:820px){.rejilla{columns:1}}
+/* Una rejilla con una sola tarjeta la dejaba en la columna izquierda y la
+   derecha vacia (D2 y E2 de Desempeno 12-08-2026). Sola, ocupa todo el ancho. */
+.rejilla:has(> .t:only-child){columns:1}
+
+/* Las tarjetas van en inline-block y no en flow-root, que era lo que traian las
+   hojas hechas a mano. Con flow-root, WebKit (el motor de Safari) no reparte
+   entre las dos columnas una seccion de solo dos tarjetas altas: las apilaba en
+   la columna izquierda y dejaba la derecha vacia. Visto en la primera hoja real
+   (Sistemas 01-09-2026). Tarjetas inline-block a ancho completo son el arreglo
+   clasico, y las reparten bien. */
+.t{
+  display:inline-block;width:100%;vertical-align:top;
+  break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;
+  background:var(--hundido);border:1px solid var(--linea-fina);border-left:3px solid var(--tinta-media);
+  border-radius:4px;padding:9px 11px 10px;margin:0 0 10px;
+}
+.t > h3{
+  font-family:var(--sans);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  margin:0 0 6px;color:var(--tinta-media);display:flex;align-items:baseline;gap:6px;
+}
+.t > h3 .n{font-family:var(--mono);font-size:10px;font-weight:700;opacity:.75}
+.t > :last-child{margin-bottom:0}
+.t p{margin:0 0 6px}
+.t ul,.t ol{margin:0 0 6px;padding-left:16px}
+.t li{margin:2px 0}
+
+.t.form{border-left-color:var(--violeta);background:var(--violeta-fondo)}
+.t.form > h3{color:var(--violeta)}
+.t.tab{border-left-color:var(--azul);background:var(--azul-fondo)}
+.t.tab > h3{color:var(--azul)}
+.t.con{border-left-color:var(--cian);background:var(--cian-fondo)}
+.t.con > h3{color:var(--cian)}
+.t.pro{border-left-color:var(--naranjo);background:var(--naranjo-fondo)}
+.t.pro > h3{color:var(--naranjo)}
+.t.err{border-left-color:var(--rojo);background:var(--rojo-fondo)}
+.t.err > h3{color:var(--rojo)}
+.t.ok{border-left-color:var(--verde);background:var(--verde-fondo)}
+.t.ok > h3{color:var(--verde)}
+.t.mem{border-left-color:var(--amarillo);background:var(--amarillo-fondo);border-width:1px 1px 1px 3px}
+.t.mem > h3{color:var(--amarillo)}
+.t.plena{margin-bottom:12px}
+
+/* ---------- piezas internas ---------- */
+code,.m{font-family:var(--mono);font-size:.88em;font-weight:400}
+.t.form code,.t.mem code{font-weight:700}
+b,strong{font-weight:700;color:var(--tinta)}
+
+pre{
+  font-family:var(--mono);font-size:10.6px;line-height:1.5;white-space:pre;
+  background:var(--papel);border:1px solid var(--linea-fina);border-radius:3px;
+  padding:6px 8px;margin:0 0 7px;overflow-x:auto;
+}
+table{border-collapse:collapse;width:100%;font-size:11.6px;margin:0 0 7px;display:block;overflow-x:auto}
+th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--linea-fina);vertical-align:top}
+thead th,thead td{font-family:var(--sans);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--tinta-media);font-weight:700;border-bottom:1px solid var(--linea)}
+tbody tr:last-child td{border-bottom:0}
+td.n,th.n{font-family:var(--mono);white-space:nowrap;font-size:11px}
+/* Sin nowrap a proposito: con el, un rotulo largo ensanchaba la tabla mas alla
+   de la hoja. Al imprimir se achicaba la pagina entera y aun asi se cortaba la
+   ultima columna (Desempeno 19-08-2026). */
+td.p{font-family:var(--sans);font-size:9.6px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--tinta-media)}
+/* El modelo a veces marca con p todas las celdas y no solo los rotulos: la tabla
+   de las seis estructuras (Desempeno 19-08-2026) salio entera en mayusculas
+   chicas, ilegible. Las instrucciones ya lo prohiben, pero la hoja no puede
+   depender de que el modelo obedezca. En el cuerpo de la tabla, fuera de la
+   primera columna, la celda vuelve a ser texto normal. */
+tbody td.p:not(:first-child){font-family:inherit;font-size:inherit;letter-spacing:normal;text-transform:none;font-weight:inherit;color:inherit}
+
+.paso{display:flex;gap:6px;margin:0 0 4px}
+.paso > .num{font-family:var(--mono);font-weight:700;font-size:10.5px;color:var(--tinta-suave);flex:0 0 auto;padding-top:1px}
+.paso > div{flex:1 1 auto}
+
+.clave{display:block;font-family:var(--sans);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;margin:7px 0 3px;color:var(--tinta-suave)}
+.v-f{font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border-radius:2px;margin-right:5px;white-space:nowrap}
+.v-f.no{color:var(--rojo);background:var(--rojo-fondo);border:1px solid var(--rojo)}
+.v-f.si{color:var(--verde);background:var(--verde-fondo);border:1px solid var(--verde)}
+.cita{font-style:italic;color:var(--tinta-media)}
+.mini{font-size:11.5px;color:var(--tinta-media)}
+
+/* ---------- figuras ---------- */
+figure{margin:0 0 7px}
+/* Tope de alto: el SVG escala con el ancho de la tarjeta, asi que un grafico
+   de proporcion casi cuadrada en una tarjeta ancha quedaba mas alto que la
+   pantalla (1154 x 1065 en la primera hoja real, Sistemas 01-09-2026) y tapaba
+   todo lo demas. Con el tope, el dibujo se achica y queda centrado. */
+figure svg{display:block;width:100%;max-width:100%;height:auto;max-height:440px;margin:0 auto;color:var(--tinta)}
+/* Un <text> sin fill sale negro, el color por defecto de SVG, y en la pantalla
+   oscura casi no se lee. El modelo a veces pone fill="currentColor" en un grupo y
+   deja textos fuera de el: en Desempeno 02-09-2026 todo el organigrama y en el
+   19-08 la caja de actividades de apoyo quedaron negro sobre fondo oscuro. Al
+   imprimir no se notaba, porque ahi currentColor tambien es negro. */
+svg text:not([fill]){fill:currentColor}
+figcaption{font-size:11.5px;color:var(--tinta-media);margin-top:4px}
+.svg-acento{color:var(--naranjo)}
+
+/* ---------- formulas en MathML ---------- */
+math{font-size:1.24em}
+/* La formula ancha se desplaza dentro de si misma en vez de empujar la tarjeta
+   y romper la rejilla. overflow-y va en hidden a proposito: si solo se declara
+   overflow-x, el otro eje pasa a auto por regla del estandar y aparece una
+   barra vertical que no sirve para nada (visto en la hoja de Termodinamica). */
+math[display="block"]{font-size:1.34em;overflow-x:auto;overflow-y:hidden;padding:7px 0 8px}
+.t.plena math[display="block"]{font-size:1.48em}
+.mate{margin:7px 0}
+.mate math[display="block"]{margin:0}
+.mate .g{display:block;font-family:var(--sans);font-size:10.5px;line-height:1.4;color:var(--tinta-suave);margin-top:3px}
+.mate .g math{font-size:1em}
+:where(p,li,td,th,figcaption,.mini,.g) math{font-size:1.1em}
+
+.pie{margin-top:22px;padding-top:8px;border-top:1px solid var(--linea);font-size:10.5px;color:var(--tinta-suave);font-family:var(--sans);line-height:1.5}
+
+/* ---------- impresion ---------- */
+@media print{
+  /* Blanco y negro puro, para gastar el minimo de tinta. Cero fondos y cero
+     cajas rellenas: solo filetes. La jerarquia la llevan el peso y el estilo
+     del filete, no el color. No hace falta activar "Imprimir fondos". */
+  :root{
+    --papel:#fff; --hundido:#fff; --linea:#000; --linea-fina:#8a8a8a;
+    --tinta:#000; --tinta-media:#000; --tinta-suave:#000;
+    --azul:#000; --azul-fondo:#fff;
+    --naranjo:#000; --naranjo-fondo:#fff;
+    --verde:#000; --verde-fondo:#fff;
+    --rojo:#000; --rojo-fondo:#fff;
+    --violeta:#000; --violeta-fondo:#fff;
+    --cian:#000; --cian-fondo:#fff;
+    --amarillo:#000; --amarillo-fondo:#fff;
+    color-scheme:light;
+  }
+  @page{margin:9mm}
+  body{padding:0;background:#fff;color:#000;font-size:8.3pt;line-height:1.34;hyphens:auto;-webkit-hyphens:auto}
+  h1,h2,h3,.clave,th,td.p{hyphens:manual;-webkit-hyphens:manual}
+  .hoja{max-width:none}
+  /* Al imprimir, WebKit ignora columns: todo sale en una sola columna, y la
+     hoja de validacion ocupaba 4 paginas carta en vez de 3. Se probo restringir
+     a pantalla la regla de max-width:820px y no cambio nada, y tampoco sirvio
+     poner tarjetas inline-block dentro de columns.
+     Despues se uso grid, que si da dos columnas, pero WebKit parte una tarjeta
+     de grid entre dos paginas aunque lleve break-inside:avoid, y dejaba el titulo
+     de la tarjeta solo al pie (Desempeno 26-08 y 02-09-2026).
+     Ahora, sin columns ni grid, cada tarjeta es un inline-block de media hoja.
+     Una linea de tarjetas no se parte: si no cabe, pasa entera a la pagina
+     siguiente. Medido el 12-09-2026 en las cuatro hojas de Desempeno: ninguna
+     tarjeta partida y las mismas 3 paginas. El font-size:0 de la rejilla evita
+     que el espacio entre dos tarjetas las empuje a lineas separadas. */
+  .rejilla{display:block;columns:auto;font-size:0;line-height:0}
+  .rejilla:has(> .t:only-child){columns:auto}
+  .rejilla > .t{display:inline-block;width:calc(50% - 3mm);vertical-align:top;font-size:8.3pt;line-height:1.34}
+  .rejilla > .t:nth-child(odd){margin-right:6mm}
+  .rejilla > .t:only-child{width:100%;margin-right:0}
+
+  .cab{padding-bottom:4px;margin-bottom:8px;border-bottom:1.4pt solid #000}
+  .cab h1{font-size:17pt}
+  .cab .sub{font-size:8.4pt}
+  .leyenda{font-size:6.6pt;line-height:1.5;margin-top:5px}
+
+  .bloque{margin-top:9px}
+  /* Reserva bajo el titulo de seccion: 75 mm de relleno invisible, un margen
+     negativo igual y sin partirse. Si el titulo y 75 mm mas no caben, el titulo
+     pasa a la pagina siguiente junto con lo que sigue. Sin esto quedaban
+     titulos solos al pie de la pagina (Desempeno 19-08, 26-08 y 02-09-2026,
+     cuatro veces). break-after:avoid solo no sirvio, porque WebKit lo ignora, y
+     queda por si otro navegador lo respeta. Con 35 mm se arreglaban dos de los
+     cuatro casos y con 75 mm los cuatro, sin que ninguna hoja pasara de 3
+     paginas. El costo es algo mas de blanco al pie de algunas paginas. La linea
+     de abajo del titulo se quita porque quedaria al final del relleno. La pone
+     el filete de arriba de la primera tarjeta. */
+  .bloque > h2{font-size:8pt;margin-bottom:calc(5px - 75mm);padding:3px 0 calc(3px + 75mm);border-top:1.4pt solid #000;border-bottom:0;break-inside:avoid;page-break-inside:avoid;break-after:avoid;page-break-after:avoid}
+
+  /* Tarjetas sin caja: un filete arriba y nada mas. El estilo del filete
+     reemplaza al color como senalizacion. */
+  .t{
+    display:block;
+    break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;
+    background:#fff;border:0;border-top:.5pt solid #000;border-radius:0;
+    padding:4px 0 5px;margin:0 0 6px;
+  }
+  .t > h3{font-size:7.4pt;margin-bottom:3px;break-after:avoid;page-break-after:avoid}
+  pre,table,.paso,figure,.mate{break-inside:avoid;page-break-inside:avoid}
+  p,li{orphans:2;widows:2}
+  .t p,.t li,.t .paso{break-inside:avoid;page-break-inside:avoid}
+  .t > h3 .n{opacity:1}
+  .t.form,.t.mem{border-top:1.6pt double #000}
+  .t.err{border-top:.9pt dashed #000}
+  .t p,.t li{margin-bottom:2.5px}
+  .t ul,.t ol{padding-left:13px}
+
+  pre{font-size:6.9pt;line-height:1.33;padding:3px 4px;margin-bottom:4px;background:#fff;border:.4pt solid #8a8a8a;white-space:pre}
+  table{font-size:7.2pt;display:table}
+  th,td{padding:1.5px 4px;border-bottom:.3pt solid #8a8a8a}
+  thead th,thead td{font-size:6.6pt;border-bottom:.7pt solid #000}
+  thead{display:table-header-group}
+  tr{break-inside:avoid}
+  td.n,th.n{font-size:7pt}
+  td.p{font-size:6.6pt}
+
+  .clave{font-size:6.6pt;margin:5px 0 2px}
+  .v-f{border:.5pt solid #000;background:#fff;font-size:6.6pt}
+  figcaption{font-size:7pt}
+  .mini{font-size:7.4pt}
+  figure svg{max-height:62mm}
+  math{font-size:1.16em}
+  math[display="block"]{font-size:1.24em}
+  .t.plena math[display="block"]{font-size:1.32em}
+  .mate .g{font-size:6.8pt}
+  .pie{font-size:6.6pt;margin-top:7px;padding-top:5px;border-top:.5pt solid #000}
+}
+
+/* Sin regla para papel apaisado, a proposito. Habia una, con
+   (orientation:landscape), que pasaba a tres columnas. En WebKit, el motor de
+   Safari, se activaba al imprimir en hoja vertical, porque mide la orientacion
+   con la ventana del navegador y no con la hoja. Comprobado el 12-09-2026 con la
+   misma pagina y la misma hoja carta vertical: con ventana de 1280x900 aplico la
+   regla y con ventana de 800x1200 no. Casi toda ventana es mas ancha que alta,
+   asi que en Safari las hojas salian en tres columnas y con un tercio de pagina
+   en blanco en cada seccion de dos tarjetas. Dos columnas sirven en los dos
+   sentidos. */

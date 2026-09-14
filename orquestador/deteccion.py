@@ -2,7 +2,7 @@
 Motor de deteccion y agrupacion de grabaciones en Input.
 
 Se asume que este modulo se llama cada vez que el estudiante hace clic en la app
-"Procesar clases" (ver boton_procesar/). Cada llamada es un "scan": lee el
+"Procesar clases" (ver boton_app/). Cada llamada es un "scan": lee el
 tamano actual de los archivos en Input, lo compara contra el tamano visto
 en el scan anterior (guardado en disco, no en memoria, porque cada clic es
 un proceso nuevo), y considera "estable" un archivo cuyo tamano no cambio

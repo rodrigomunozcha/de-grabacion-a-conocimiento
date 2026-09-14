@@ -1,6 +1,6 @@
 """
 Etapa de revision: una segunda pasada, independiente, sobre lo que escribio
-la skill, antes de que eso se convierta en .docx y en flashcards de Anki.
+la skill, antes de que eso quede en el vault y se condense en la hoja de repaso.
 
 Por que existe. La skill hace todo en una sola corrida (limpiar, destilar,
 preguntar, responder) y nadie mira el resultado antes de que se archive como
@@ -8,8 +8,9 @@ material de estudio. El riesgo real no es que quede feo, es que quede
 convincente y falso: la transcripcion viene de audio de sala, tiene tramos
 inaudibles y errores del transcriptor, y el mismo modelo que rellena esos
 huecos es el que despues decide si su trabajo quedo bien. Un dato inventado
-que se cuela aca no queda en un archivo cualquiera: termina memorizado en
-Anki y estudiado como si fuera lo que dijo el profe.
+que se cuela aca no queda en un archivo cualquiera: termina en la hoja de
+repaso, que se lee la noche antes de la prueba, y se estudia como si fuera lo
+que dijo el profe.
 
 Por eso el revisor corre como una llamada aparte y no como una autocritica
 dentro de la misma sesion. Llega sin haber escrito nada, sin compromiso con
@@ -61,7 +62,7 @@ Lo que buscas, en orden de importancia:
 
 1. Contenido inventado. Afirmaciones, definiciones, cifras, formulas o ejemplos
    que estan en las notas y no tienen respaldo en la transcripcion. Este es el
-   fallo mas grave: la nota alimenta flashcards que el estudiante va a memorizar.
+   fallo mas grave: la nota se condensa en la hoja con la que el estudiante va a estudiar.
 2. Respuestas modelo que contradicen la clase o que se apoyan en teoria general
    en vez de en lo que el profe efectivamente enseño.
 3. Reconstrucciones presentadas como textuales. Graficos de pizarra, formulas y
@@ -107,7 +108,7 @@ def _construir_prompt(
         "Lee estos tres archivos completos antes de opinar:\n"
         f"1. Transcripcion cruda (la unica fuente de verdad): {ruta_transcripcion}\n"
         f"2. Nota de fuente limpia: {ruta_fuente}\n"
-        f"3. Nota de aprendizaje (la que genera las flashcards): {ruta_aprendizaje}\n\n"
+        f"3. Nota de aprendizaje (la que se condensa en la hoja de repaso): {ruta_aprendizaje}\n\n"
         "Los cinco conceptos que el agente reporto como los mas repetidos por el "
         f"profe:\n{conceptos_texto}\n\n"
         "Cuando termines, la ultima linea de tu respuesta debe ser exactamente esta, "

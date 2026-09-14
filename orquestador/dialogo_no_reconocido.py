@@ -136,10 +136,10 @@ def _crear_ramo_nuevo(config: dict) -> tuple[str, str, str] | None:
 
 def elegir_ramo(config: dict) -> tuple[str, str, str] | None:
     """
-    Publica a proposito: la usa procesar_aparte.py, que es la otra entrada por
-    la que se elige un ramo a mano. Las dos tienen que ofrecer exactamente la
-    misma lista y el mismo camino para crear un ramo nuevo, o el estudiante
-    veria dos catalogos de ramos distintos segun por donde entro.
+    Tambien la usaba procesar_aparte.py, la otra entrada por la que se elegia
+    un ramo a mano, retirada el 14-09-2026. Si vuelve a haber una segunda
+    entrada, que llame a esta misma funcion: dos catalogos de ramos distintos
+    segun por donde entro el estudiante serian confusos.
     """
     ramos_horario = {r["nombre"]: {"perfil_whisper": r["perfil_whisper"], "contexto": ""} for r in config["ramos"].values()}
     ramos_adicionales = config.get("ramos_adicionales", {})

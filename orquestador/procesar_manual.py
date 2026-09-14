@@ -7,7 +7,7 @@ completo con un audio real sin tener que fingir fechas de archivo ni pasar
 por la carpeta Input.
 
 Corre la misma cadena que el flujo automatico (transcribir -> skill ->
-conceptos repetidos -> docx -> archivado -> Anki -> notificacion). La unica
+conceptos repetidos -> hoja -> archivado -> notificacion). La unica
 diferencia es que el ramo se da a mano en vez de resolverse por el dia de
 la semana. Acepta una o varias partes de audio (se ordenan por fecha de
 modificacion, igual que en el flujo automatico, y se concatenan en ese orden).
@@ -93,9 +93,9 @@ async def procesar_grabacion_manual(
         trabajo_metadata["archivo_texto"] = str(dir_pendientes() / f"{slug}.txt")
         trabajo_metadata["slug"] = slug
 
-        ruta_docx = await procesar_clase_reconocida(trabajo_metadata, config)
+        ruta_hoja = await procesar_clase_reconocida(trabajo_metadata, config)
         estado_vivo.terminar("Listo, revisa la carpeta Output")
-        return ruta_docx
+        return ruta_hoja
     except Exception:
         estado_vivo.terminar("El procesamiento se interrumpió", error=True)
         raise
@@ -139,5 +139,5 @@ if __name__ == "__main__":
         print("Falta indicar al menos una ruta de audio.")
         raise SystemExit(1)
 
-    ruta_docx = anyio.run(procesar_grabacion_manual, rutas, ramo, perfil, fecha_manual)
-    print(f"Listo: {ruta_docx}")
+    ruta_hoja = anyio.run(procesar_grabacion_manual, rutas, ramo, perfil, fecha_manual)
+    print(f"Listo: {ruta_hoja}")

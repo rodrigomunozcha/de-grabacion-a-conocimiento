@@ -54,7 +54,7 @@ def _con_terminal_notifier(
     titulo: str, subtitulo: str, mensaje: str, url_al_hacer_clic: str | None, sonido: bool
 ) -> bool:
     """
-    Via preferida: es la unica que permite abrir el .docx al hacer clic en el
+    Via preferida: es la unica que permite abrir la hoja al hacer clic en el
     aviso. Devuelve False si no se pudo entregar.
     """
     if not Path(TERMINAL_NOTIFIER).exists():
@@ -131,17 +131,17 @@ def notificar_progreso(etapa: str, detalle: str = "", eta_segundos: float | None
     _notificar(titulo="Procesando...", subtitulo=etapa, mensaje=detalle, sonido=False)
 
 
-def notificar_exito(trabajo: dict, titulo_clase: str, ruta_docx: Path) -> None:
+def notificar_exito(trabajo: dict, titulo_clase: str, ruta_documento: Path) -> None:
     _notificar(
         titulo="Clase procesada",
         subtitulo=f"{trabajo['ramo']} - {trabajo['fecha']}",
         mensaje=titulo_clase,
-        url_al_hacer_clic=_file_url(ruta_docx),
+        url_al_hacer_clic=_file_url(ruta_documento),
     )
 
 
 def notificar_aviso(titulo: str, mensaje: str) -> None:
-    """Para avisos que no son error ni exito completo (ej. Anki cerrado)."""
+    """Para avisos que no son error ni exito completo (ej. la revision no corrio)."""
     _notificar(titulo=titulo, subtitulo="", mensaje=mensaje)
 
 

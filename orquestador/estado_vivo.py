@@ -37,10 +37,9 @@ VISOR_PATH = Path(__file__).parent.parent / "barra_menu" / "BarraEstado"
 PASO_TRANSCRIBIR = "Transcribiendo el audio"
 PASO_SKILL = "Analizando la clase"
 PASO_REVISION = "Revisando lo escrito"
-PASO_DOCUMENTO = "Armando el documento y archivando"
-PASO_ANKI = "Agregando las flashcards"
+PASO_DOCUMENTO = "Redactando la hoja y archivando"
 
-PASOS = [PASO_TRANSCRIBIR, PASO_SKILL, PASO_REVISION, PASO_DOCUMENTO, PASO_ANKI]
+PASOS = [PASO_TRANSCRIBIR, PASO_SKILL, PASO_REVISION, PASO_DOCUMENTO]
 
 # Segundos de audio transcritos por segundo de reloj, cuando todavia no hay
 # historial propio. Deliberadamente pesimista.
@@ -198,8 +197,11 @@ def paso(etapa: str, detalle: str = "", eta_segundos: float | None = None,
     if not estado:
         return
     numero = PASOS.index(etapa) + 1 if etapa in PASOS else estado.get("paso", 0)
-    if eta_segundos is None and etapa in (PASO_SKILL, PASO_REVISION):
-        eta_segundos = _promedio_historico("destilado" if etapa == PASO_SKILL else "revision")
+    # Las tres etapas que llaman al modelo: su duracion no se puede calcular de
+    # antemano, solo promediar lo que tardaron en corridas anteriores.
+    etapa_en_uso = {PASO_SKILL: "destilado", PASO_REVISION: "revision", PASO_DOCUMENTO: "hoja"}
+    if eta_segundos is None and etapa in etapa_en_uso:
+        eta_segundos = _promedio_historico(etapa_en_uso[etapa])
     estado.update({
         "paso": numero,
         "etapa": etapa,

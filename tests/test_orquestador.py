@@ -1,10 +1,10 @@
 """
 Pruebas del orquestador que no cuestan tokens ni tocan nada real.
 
-Cubren la logica determinista (fechas, nombres, flashcards, .docx) y, sobre
+Cubren la logica determinista (fechas, nombres, la hoja de repaso) y, sobre
 todo, las garantias de aislamiento del modo ensayo: que un ensayo no pueda
-escribir en el vault real, en Anki, en config.json ni en la carpeta de
-intermedios. Esa ultima garantia existe porque ya fallo una vez: un ensayo
+escribir en el vault real, en config.json ni en la carpeta de intermedios.
+Esa ultima garantia existe porque ya fallo una vez: un ensayo
 dejaba <slug>_skill.json en la carpeta real y eso habria hecho que la
 siguiente corrida de verdad se saltara la clase en silencio.
 
@@ -20,7 +20,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from orquestador import carpetas, deteccion, docx_generator, ensayo, extraer_flashcards, nombres
+from orquestador import carpetas, deteccion, ensayo, nombres
 from orquestador.config import PENDIENTES_DIR_POR_DEFECTO, dir_pendientes, usar_dir_pendientes
 
 fallos: list[str] = []
@@ -64,71 +64,6 @@ def probar_deteccion() -> None:
     check("un sabado no asigna ramo", deteccion.resolver_ramo(date(2026, 8, 8), cfg) is None)
     check("la semana de semestre se calcula bien",
           deteccion.calcular_semana_semestre(date(2026, 8, 10), "2026-08-03") == 2)
-
-
-def probar_flashcards() -> None:
-    print("\n== extraccion de flashcards ==")
-    nota = """## 10 preguntas
-(de menor a mayor dificultad, tapate las respuestas)
-1. Que es la elasticidad?
-2. Por que importa el excedente?
-
-## Respuestas modelo
-(las que daria alguien que domina el tema)
-1. La sensibilidad de la cantidad ante el precio.
-2. Porque mide el bienestar.
-
-## Otra seccion
-texto que no debe entrar
-"""
-    t = extraer_flashcards.extraer_preguntas_respuestas(nota)
-    check("extrae exactamente dos tarjetas", len(t) == 2, str(t))
-    check("no cuela la linea de instruccion como pregunta",
-          all("dificultad" not in p and "domina el tema" not in r for p, r in t))
-    check("empareja cada pregunta con su respuesta",
-          t[0][0].startswith("Que es la elasticidad") and t[0][1].startswith("La sensibilidad"))
-    check("no arrastra la seccion siguiente",
-          all("no debe entrar" not in p + r for p, r in t))
-
-
-def probar_docx() -> None:
-    print("\n== generacion del .docx ==")
-    md = """---
-ramo: PRUEBA
----
-# Titulo
-Texto con **negrita**.
-
-| Concepto | Definicion |
-| --- | --- |
-| Elasticidad | Sensibilidad |
-
-## Preguntas de repaso
-esto no debe aparecer en el docx
-"""
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "PRUEBA"},
-            "Clase de prueba",
-            "# Fuente\nTexto de respaldo.",
-            md,
-            [{"concepto": "Elasticidad", "por_que": "se repite al inicio y al cierre"}],
-            {"rutas": {"output": str(tmp)}},
-        )
-        check("crea el archivo .docx", ruta.is_file() and ruta.stat().st_size > 0)
-        check("usa el nombre de clase correcto",
-              ruta.name == "Clase 01 - 2026-08-05 - Clase de prueba.docx", ruta.name)
-
-        from docx import Document
-        doc = Document(str(ruta))
-        texto = "\n".join(p.text for p in doc.paragraphs)
-        check("renderiza las tablas markdown", len(doc.tables) >= 2, f"tablas={len(doc.tables)}")
-        check("omite las secciones de repaso espaciado", "esto no debe aparecer" not in texto)
-        check("quita el frontmatter YAML", "ramo: PRUEBA" not in texto)
-        check("la negrita queda sin asteriscos", "**negrita**" not in texto and "negrita" in texto)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probar_aislamiento_del_ensayo() -> None:
@@ -480,68 +415,6 @@ def probar_decisiones_de_pantalla_se_aplican() -> None:
             transcripcion.guardar_config = original_guardar
 
 
-def probar_grabacion_aparte_nunca_deduce_el_ramo() -> None:
-    """
-    El agujero que este flujo tapa: una grabacion que no es clase, subida un
-    dia que si tiene ramo en el horario, se archivaba bajo ese ramo sin
-    preguntar. Paso en vivo el 26-08-2026 (miercoles) con una reunion de un
-    ramo anexo, que quedo como BIOLOGIA CELULAR y ademas choco de
-    numero con la clase real de ese mismo miercoles.
-
-    Lo que se prueba aca es que por esta entrada el dia de la semana no
-    participa en la decision: se manda lo que el estudiante eligio, aunque la
-    fecha caiga justo sobre un ramo del horario.
-    """
-    print("\n== la grabacion aparte nunca deduce el ramo del dia ==")
-    from orquestador import procesar_aparte as pa
-
-    with tempfile.TemporaryDirectory() as tmp:
-        audio = Path(tmp) / "reunion.m4a"
-        audio.write_bytes(b"audio falso")
-
-        config_falsa = {
-            "ramos": {"miercoles": {"nombre": "BIOLOGIA CELULAR",
-                                    "perfil_whisper": "es-chile"}},
-            "ramos_adicionales": {},
-        }
-        originales = (pa.cargar_config, pa.elegir_ramo, pa._pedir_fecha, pa._confirmar)
-        try:
-            pa.cargar_config = lambda: config_falsa
-            pa.elegir_ramo = lambda _c: ("EIC - EVALUACION INTERMEDIA DE CONOCIMIENTOS",
-                                         "es-chile", "")
-            # Un miercoles: el dia que en el horario es BIOLOGIA CELULAR.
-            pa._pedir_fecha = lambda _d: date(2026, 8, 26)
-            pa._confirmar = lambda _a, _r, _f: True
-
-            plan = pa.preparar([str(audio)])
-            check("respeta el ramo elegido, no el del dia de la semana",
-                  plan["ramo"] == "EIC - EVALUACION INTERMEDIA DE CONOCIMIENTOS",
-                  f"dio '{plan['ramo']}'")
-            check("el dia miercoles no cambia nada",
-                  "BIOLOGIA CELULAR" not in plan["ramo"])
-
-            # Cancelar en cualquier paso no puede tocar el audio.
-            for paso, parche in [
-                ("al elegir el ramo", lambda: setattr(pa, "elegir_ramo", lambda _c: None)),
-                ("al poner la fecha", lambda: setattr(pa, "_pedir_fecha", lambda _d: None)),
-                ("al confirmar", lambda: setattr(pa, "_confirmar", lambda _a, _r, _f: False)),
-            ]:
-                pa.cargar_config = lambda: config_falsa
-                pa.elegir_ramo = lambda _c: ("EIC", "es-chile", "")
-                pa._pedir_fecha = lambda _d: date(2026, 8, 26)
-                pa._confirmar = lambda _a, _r, _f: True
-                parche()
-                check(f"cancelar {paso} -> no devuelve plan", pa.preparar([str(audio)]) is None)
-                check(f"cancelar {paso} -> el audio sigue donde estaba", audio.is_file())
-        finally:
-            pa.cargar_config, pa.elegir_ramo, pa._pedir_fecha, pa._confirmar = originales
-
-    import inspect
-    fuente = inspect.getsource(pa.preparar)
-    check("preparar() no consulta la tabla dia->ramo",
-          "resolver_ramo" not in fuente and "weekday" not in fuente)
-
-
 def probar_bitacora_deshace_todo() -> None:
     """
     El aborto promete dejar el disco como estaba. Si el deshacer falla, esa
@@ -576,9 +449,9 @@ def probar_bitacora_deshace_todo() -> None:
         carpeta_nueva.mkdir()
         b.carpeta_creada(carpeta_nueva)
 
-        docx = base / "salida.docx"
-        docx.write_bytes(b"docx")
-        b.archivo_creado(docx)
+        hoja = base / "salida.html"
+        hoja.write_bytes(b"<html></html>")
+        b.archivo_creado(hoja)
 
         destino = base / "Procesados" / "clase archivada.m4a"
         destino.parent.mkdir(parents=True)
@@ -598,7 +471,7 @@ def probar_bitacora_deshace_todo() -> None:
               indice.read_text(encoding="utf-8") == "contenido original",
               indice.read_text(encoding="utf-8"))
         check("la carpeta creada se elimino", not carpeta_nueva.exists())
-        check("el .docx se borro", not docx.exists())
+        check("la hoja se borro", not hoja.exists())
         check("el audio volvio a Input", audio.is_file() and not destino.exists())
         check("el audio conserva su contenido", audio.read_bytes() == b"audio")
         check("se informa lo que se revirtio", len(revertido) >= 4, str(revertido))
@@ -647,477 +520,6 @@ def probar_seccion_critica() -> None:
 
     check("el tramo se completo antes de abortar", llego_al_final)
     check("el candado queda libre despues", not cancelacion._seccion_critica.locked())
-
-
-def probar_formulas() -> None:
-    print("\n== formulas con subindices y superindices reales ==")
-    from docx import Document as Doc
-    from orquestador import formulas
-
-    check("reconoce una formula destacada", formulas.es_formula_destacada("$$x̄ ± σ$$"))
-    check("no confunde texto normal con formula", not formulas.es_formula_destacada("cuesta $5 o $8"))
-    check("extrae el contenido", formulas.texto_de_formula_destacada("$$x̄$$") == "x̄")
-
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        # Una formula destacada se dibuja como imagen, con tipografia
-        # matematica de verdad (barra de fraccion, radical que se estira).
-        doc = Doc()
-        formulas.agregar_formula_destacada(
-            doc, r"\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}")
-        ruta = Path(tmp) / "conformula.docx"
-        doc.save(str(ruta))
-        check("la formula destacada queda como imagen",
-              len(Doc(str(ruta)).inline_shapes) == 1,
-              f"imagenes={len(Doc(str(ruta)).inline_shapes)}")
-
-        # Si el dibujo falla, no se pierde la formula: se escribe como texto.
-        original = formulas._renderizar_imagen
-        formulas._renderizar_imagen = lambda _l: None
-        try:
-            doc_fb = Doc()
-            formulas.agregar_formula_destacada(doc_fb, "s^{2} = Σ(x_i - x̄)^{2}")
-            p = doc_fb.paragraphs[-1]
-            check("sin imagen se cae a texto con superindices",
-                  [r.text for r in p.runs if r.font.superscript] == ["2", "2"])
-            check("sin imagen se cae a texto con subindices",
-                  [r.text for r in p.runs if r.font.subscript] == ["i"])
-            check("y conserva los simbolos Unicode", "Σ" in p.text and "x̄" in p.text)
-        finally:
-            formulas._renderizar_imagen = original
-
-        # Una formula corta dentro de una frase sigue siendo texto: una imagen
-        # ahi quedaria desalineada con el renglon.
-        doc2 = Doc()
-        par = doc2.add_paragraph()
-        from orquestador.docx_generator import _agregar_texto_con_negritas
-        _agregar_texto_con_negritas(par, "La varianza $s^{2}$ usa **n-1** abajo.")
-        check("la formula inline se formatea",
-              [r.text for r in par.runs if r.font.superscript] == ["2"])
-        check("la negrita sigue funcionando junto a la formula",
-              any(r.bold and r.text == "n-1" for r in par.runs))
-        check("un guion bajo suelto fuera de $ no se toca",
-              "_" in _texto_render(doc2, "archivo_de_prueba.txt"))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def _texto_render(doc, texto: str) -> str:
-    from orquestador.docx_generator import _agregar_texto_con_negritas
-    p = doc.add_paragraph()
-    _agregar_texto_con_negritas(p, texto)
-    return p.text
-
-
-def probar_contexto_va_primero() -> None:
-    """El contexto solo sirve si se lee antes de la clase, o sea si esta al
-    principio del documento."""
-    print("\n== la seccion de contexto va al frente ==")
-    from docx import Document as Doc
-
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "Titulo", "# Fuente\ntexto", "# Aprendizaje\ntexto",
-            [{"concepto": "C", "por_que": "p"}],
-            {"rutas": {"output": str(tmp)}},
-            "# Contexto previo\n\nAlgo que hay que saber antes.",
-        )
-        encabezados = [p.text for p in Doc(str(ruta)).paragraphs
-                       if p.style.name.startswith("Heading") and p.text.strip()]
-        check("aparece la seccion de contexto",
-              any("Antes de empezar" in h for h in encabezados), str(encabezados))
-        check("va antes que los conceptos repetidos",
-              encabezados.index("Antes de empezar: lo que conviene tener claro")
-              < next(i for i, h in enumerate(encabezados) if "repetidos" in h))
-
-        # Sin contexto el documento se arma igual: la seccion es opcional.
-        ruta2 = docx_generator.generar_docx(
-            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
-            "Otro", "# Fuente\ntexto", "# Aprendizaje\ntexto", [],
-            {"rutas": {"output": str(tmp)}}, "",
-        )
-        sin = [p.text for p in Doc(str(ruta2)).paragraphs if p.style.name.startswith("Heading")]
-        check("sin contexto el .docx se arma igual",
-              ruta2.is_file() and not any("Antes de empezar" in h for h in sin))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_formulas_en_tablas() -> None:
-    """
-    Las celdas se escribian como texto plano, asi que la tabla de "que formula
-    uso en cada caso" era el unico lugar del documento donde las formulas se
-    veian crudas, con el guion bajo y los parentesis a la vista.
-    """
-    print("\n== formulas dentro de tablas ==")
-    from docx import Document as Doc
-    from orquestador import formulas
-
-    check("una celda que es toda formula se reconoce",
-          formulas.parece_solo_formula("x̄ ± z_(1-α/2)·σ/√n"))
-    check("una celda de texto normal no se confunde con formula",
-          not formulas.parece_solo_formula(
-              "Quiero estimar μ y conozco σ (dato del enunciado)"))
-
-    # El modelo no siempre escribe LaTeX: hay que entender su Unicode.
-    latex = formulas.a_latex("p̂ ± z_(1-α/2)·√(p̂q̂/n)")
-    check("el sombrero Unicode pasa a LaTeX", r"\hat{p}" in latex, latex)
-    check("la raiz Unicode pasa a LaTeX", r"\sqrt{" in latex, latex)
-    check("el subindice con parentesis pasa a llaves", "_{1-" in latex, latex)
-    check("lo que ya viene en LaTeX no se toca",
-          formulas.a_latex(r"\bar{x} \pm \sigma") == r"\bar{x} \pm \sigma")
-
-    md = (
-        "| Situación | Fórmula |\n"
-        "|---|---|\n"
-        "| Conozco σ, muestra grande | x̄ ± z_(1-α/2)·σ/√n |\n"
-    )
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", "", "# A\n\n" + md, [], {"rutas": {"output": str(tmp)}}, "",
-        )
-        doc = Doc(str(ruta))
-        marca = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}inline"
-        imagenes_en_celdas = sum(
-            len(p._p.findall(f".//{marca}"))
-            for t in doc.tables for f in t.rows for c in f.cells for p in c.paragraphs
-        )
-        check("la formula de la celda se dibuja", imagenes_en_celdas == 1,
-              f"imagenes={imagenes_en_celdas}")
-        textos = [c.text for t in doc.tables for f in t.rows for c in f.cells]
-        check("ya no queda la formula cruda en el texto",
-              not any("z_(1-" in x for x in textos), str(textos))
-        check("la celda de texto normal sigue siendo texto",
-              any("Conozco σ" in x for x in textos), str(textos))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_matematica_dentro_de_frases() -> None:
-    """
-    El modelo mete formulas en medio de las frases sin delimitarlas. Pedirle
-    que las marque ya fallo, asi que se reconocen solas, pero sin arrastrar
-    palabras normales que llevan guion bajo.
-    """
-    print("\n== subindices en medio de una frase ==")
-    from docx import Document as Doc
-    from orquestador.docx_generator import _agregar_texto_con_negritas
-
-    doc = Doc()
-    p = doc.add_paragraph()
-    _agregar_texto_con_negritas(
-        p, "el valor crítico que se busca en tabla (z_(1-α/2) o t_(n-1, 1-α/2))")
-    subs = [r.text for r in p.runs if r.font.subscript]
-    check("los dos subindices se aplican", subs == ["1-α/2", "n-1, 1-α/2"], str(subs))
-    check("ya no queda la notacion cruda", "_(" not in p.text, p.text)
-
-    # Lo que NO debe tocarse.
-    for texto in ("El archivo_de_prueba.txt quedó guardado",
-                  "usa snake_case para nombrar variables"):
-        p2 = doc.add_paragraph()
-        _agregar_texto_con_negritas(p2, texto)
-        check(f"no toca '{texto[:22]}...'",
-              not [r for r in p2.runs if r.font.subscript] and p2.text == texto)
-
-    # La negrita convive con la matematica.
-    p3 = doc.add_paragraph()
-    _agregar_texto_con_negritas(p3, "usa **z_(α/2)** para el margen")
-    check("negrita y subindice a la vez",
-          any(r.bold and r.font.subscript for r in p3.runs))
-
-
-def probar_mapa_y_secciones() -> None:
-    """El mapa se dibuja de verdad, y la sesion por bloques de tiempo cede su
-    lugar en el .docx a la materia ya digerida."""
-    print("\n== mapa dibujado y secciones del .docx ==")
-    from docx import Document as Doc
-
-    aprendizaje = (
-        "# Aprendizaje\n\n"
-        "## 5. Materia lista para estudiar\nExplicacion con ejemplos.\n\n"
-        "## Sesión de estudio de 90 minutos\nESTO_NO_VA_AL_DOCX\n\n"
-        "## Mapa visual\n"
-        "```mapa\n"
-        '{"centro": "Tema", "ramas": [{"titulo": "Rama A", "puntos": ["p1", "p2"]},'
-        ' {"titulo": "Rama B", "puntos": ["p3"]}]}\n'
-        "```\n"
-    )
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", "# Fuente\ntexto", aprendizaje, [], {"rutas": {"output": str(tmp)}}, "",
-        )
-        doc = Doc(str(ruta))
-        texto = "\n".join(p.text for p in doc.paragraphs)
-        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
-
-        check("la sesion por bloques no va al .docx", "ESTO_NO_VA_AL_DOCX" not in texto)
-        check("la materia lista para estudiar si va",
-              any("Materia lista para estudiar" in h for h in encabezados))
-        check("el mapa se inserta como imagen", len(doc.inline_shapes) == 1,
-              f"imagenes={len(doc.inline_shapes)}")
-        check("no se duplica el titulo del mapa",
-              sum(1 for h in encabezados if "mapa" in h.lower()) == 1,
-              str([h for h in encabezados if "mapa" in h.lower()]))
-        check("el bloque de datos crudo no se imprime", '"centro"' not in texto)
-
-        # Datos mal formados: el documento se arma igual, sin mapa.
-        malo = "# A\n\n## Mapa visual\n```mapa\nesto no es json\n```\n"
-        r2 = docx_generator.generar_docx(
-            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
-            "T2", "", malo, [], {"rutas": {"output": str(tmp)}}, "",
-        )
-        check("un mapa mal formado no rompe el documento",
-              r2.is_file() and len(Doc(str(r2)).inline_shapes) == 0)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_llamados_a_la_accion() -> None:
-    """
-    La primera seccion del documento: lo que el profesor pidio.
-
-    Es la parte con mas riesgo del sistema, porque es la que el estudiante mas
-    va a creer y la que decide que estudia. Por eso se prueba que la cita
-    textual siempre viaje con el punto, que lo dudoso se avise, y que la
-    seccion aparezca incluso vacia: "no hubo anuncios" y "el sistema no los
-    detecto" no se pueden confundir.
-    """
-    print("\n== lo que el profesor pidio, al inicio del documento ==")
-    from docx import Document as Doc
-
-    llamados = {
-        "avisos": [
-            {"que": "AVISO_TRABAJO", "cuando": "la proxima semana",
-             "textual": "CITA_DEL_TRABAJO", "seguro": True},
-            {"que": "AVISO_DUDOSO", "cuando": "", "textual": "CITA_DUDOSA",
-             "seguro": False},
-        ],
-        "evaluacion": [
-            {"tema": "TEMA_QUE_ENTRA", "textual": "CITA_DE_LA_PRUEBA", "seguro": True},
-        ],
-    }
-
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", "# F\ntexto", "# A\ntexto", [{"concepto": "C", "por_que": "p"}],
-            {"rutas": {"output": str(tmp)}}, "# Contexto\nprevio", llamados,
-        )
-        doc = Doc(str(ruta))
-        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
-        texto = "\n".join(p.text for p in doc.paragraphs)
-
-        check("aparece la seccion", any("profesor pidió" in h for h in encabezados))
-        check("va antes que todo lo demas",
-              next(i for i, h in enumerate(encabezados) if "profesor pidió" in h)
-              < next(i for i, h in enumerate(encabezados) if "Antes de empezar" in h))
-        check("lo que entra en evaluacion tiene su propia subseccion",
-              any("entra en evaluación" in h for h in encabezados))
-
-        check("el aviso esta", "AVISO_TRABAJO" in texto)
-        check("con su fecha, como la dijo el profe", "la proxima semana" in texto)
-        check("y con la cita textual", "CITA_DEL_TRABAJO" in texto)
-        check("lo que entra en la prueba esta", "TEMA_QUE_ENTRA" in texto)
-        check("con su cita", "CITA_DE_LA_PRUEBA" in texto)
-        check("lo dudoso viene avisado",
-              "AVISO_DUDOSO" in texto and "no permite estar seguro" in texto)
-
-        # Sin anuncios la seccion sigue estando, con una linea que lo dice.
-        r2 = docx_generator.generar_docx(
-            {"numero_clase": 2, "fecha": "2026-08-06", "ramo": "R"},
-            "T2", "", "# A\ntexto", [], {"rutas": {"output": str(tmp)}}, "", None,
-        )
-        doc2 = Doc(str(r2))
-        texto2 = "\n".join(p.text for p in doc2.paragraphs)
-        check("sin anuncios la seccion no desaparece",
-              any("profesor pidió" in p.text for p in doc2.paragraphs
-                  if p.style.name.startswith("Heading")))
-        check("y dice explicitamente que no hubo", "no anunció" in texto2)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_documento_no_se_repite() -> None:
-    """
-    El documento llego a tener 33 paginas contando la misma materia cuatro
-    veces. Contar lo mismo varias veces no refuerza: desplaza a lo que si
-    rinde (ver references/diseno-documento.md). Esto comprueba los tres cortes
-    que lo dejaron en un tercio.
-    """
-    print("\n== el documento no cuenta lo mismo dos veces ==")
-    from docx import Document as Doc
-
-    # Nota con la estructura vieja: los pasos 1, 2 y 5 por separado.
-    aprendizaje = (
-        "---\nramo: R\n---\n\n"
-        "# Aprendizaje - Titulo Largo Del Archivo\n\n"
-        "## 1. Conceptos centrales\nCONCEPTOS_REPETIDOS_TRES_VECES\n\n"
-        "## 2. Que dominar para enseñarlo desde cero\nOTRA_VEZ_LO_MISMO\n\n"
-        "## 3. Diez preguntas para ponerme a prueba\nLAS_PREGUNTAS\n\n"
-        "## 4. Respuestas modelo\nLAS_RESPUESTAS\n\n"
-        "## 5. Materia lista para estudiar\nLA_MATERIA_DESARROLLADA\n\n"
-        "## 6. Kit de repaso\nEL_KIT\n"
-    )
-    fuente = (
-        "# Fuente - Titulo Largo Del Archivo\n\n"
-        "## Resumen\nRESUMEN_CRONOLOGICO\n\n"
-        "## Desarrollo\nLA_CLASE_OTRA_VEZ_EN_ORDEN\n\n"
-        "## Definiciones y ejemplos del profe\nLAS_DEFINICIONES\n\n"
-        "## Huecos y dudas\nLOS_HUECOS\n"
-    )
-
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", fuente, aprendizaje, [], {"rutas": {"output": str(tmp)}}, "", None,
-        )
-        doc = Doc(str(ruta))
-        texto = "\n".join(p.text for p in doc.paragraphs)
-        encabezados = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
-
-        check("la materia desarrollada se queda", "LA_MATERIA_DESARROLLADA" in texto)
-        check("las dos versiones que la repetian se van",
-              "CONCEPTOS_REPETIDOS_TRES_VECES" not in texto
-              and "OTRA_VEZ_LO_MISMO" not in texto)
-        check("el desarrollo cronologico se va",
-              "LA_CLASE_OTRA_VEZ_EN_ORDEN" not in texto
-              and "RESUMEN_CRONOLOGICO" not in texto)
-        check("las definiciones y los huecos se quedan",
-              "LAS_DEFINICIONES" in texto and "LOS_HUECOS" in texto)
-
-        check("primero la materia y despues las preguntas",
-              texto.index("LA_MATERIA_DESARROLLADA") < texto.index("LAS_PREGUNTAS"))
-        check("y las respuestas despues de las preguntas",
-              texto.index("LAS_PREGUNTAS") < texto.index("LAS_RESPUESTAS"))
-
-        check("los encabezados pierden la numeracion del metodo",
-              not any(h.strip().startswith(("1.", "2.", "3.", "4.", "5.", "6."))
-                      for h in encabezados))
-        check("el nombre del archivo de Obsidian no queda de titulo",
-              "Titulo Largo Del Archivo" not in texto)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_canales_de_enfasis() -> None:
-    """
-    Solo hay dos marcas de enfasis y significan cosas distintas. Destacar
-    funciona porque es escaso: si todo resalta, no resalta nada.
-    """
-    print("\n== los dos canales de enfasis ==")
-    from docx import Document as Doc
-
-    nota = (
-        "# A\n\n## La materia\n"
-        "> [!examen] ESTO_ENTRA_EN_LA_PRUEBA\n\n"
-        "texto normal\n\n"
-        "> [!verificar] ESTO_PUEDE_ESTAR_MAL\n"
-    )
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", "", nota, [], {"rutas": {"output": str(tmp)}}, "", None,
-        )
-        doc = Doc(str(ruta))
-        texto = "\n".join(p.text for p in doc.paragraphs)
-        check("lo que entra en la prueba se etiqueta como tal",
-              "ENTRA EN LA PRUEBA" in texto and "ESTO_ENTRA_EN_LA_PRUEBA" in texto)
-        check("el aviso de confiabilidad usa la otra marca",
-              "Verificar" in texto and "ESTO_PUEDE_ESTAR_MAL" in texto)
-        check("el aviso va donde esta el problema, no al principio",
-              texto.index("ESTO_ENTRA_EN_LA_PRUEBA") < texto.index("ESTO_PUEDE_ESTAR_MAL"))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def probar_parrafos_y_justificado() -> None:
-    """
-    Las notas vienen con el texto cortado cada ochenta o noventa caracteres,
-    que es lo normal en markdown. Cada una de esas lineas se convertia en un
-    parrafo suelto de Word con su espacio debajo, asi que un parrafo salia
-    partido en seis trozos cortados a mitad de frase.
-    """
-    print("\n== los parrafos no se parten por renglon ==")
-    from docx import Document as Doc
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-
-    nota = (
-        "# A\n\n## La materia\n"
-        "La pregunta que abre la clase es incomoda a proposito: si una empresa\n"
-        "tiene buenos productos y buenos servicios, por que igual puede quebrar?\n"
-        "La respuesta es que el problema casi nunca es el producto.\n\n"
-        "Un segundo parrafo, aparte del primero.\n\n"
-        "- una viñeta\n"
-        "- otra viñeta\n"
-    )
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        ruta = docx_generator.generar_docx(
-            {"numero_clase": 1, "fecha": "2026-08-05", "ramo": "R"},
-            "T", "", nota, [], {"rutas": {"output": str(tmp)}}, "", None,
-        )
-        doc = Doc(str(ruta))
-        cuerpo = [p.text for p in doc.paragraphs
-                  if p.style.name == "Normal" and p.text.strip()]
-
-        check("el parrafo queda entero en un solo parrafo",
-              any("incomoda a proposito" in t and "casi nunca es el producto" in t
-                  for t in cuerpo))
-        check("la linea en blanco si separa parrafos",
-              any(t.strip() == "Un segundo parrafo, aparte del primero." for t in cuerpo))
-        check("las viñetas no se fusionan entre si",
-              sum(1 for p in doc.paragraphs if p.style.name == "List Bullet") == 2)
-
-        # Una viñeta larga tambien viene cortada en la nota, y su segunda mitad
-        # se desprendia como parrafo suelto. Se veia igual que el problema que
-        # esta funcion venia a arreglar (37 viñetas asi en una nota real).
-        from orquestador.docx_generator import _unir_lineas_de_parrafo
-        r = _unir_lineas_de_parrafo(
-            "- **Evaluacion:** el 30% son talleres\n  y el 30% es el examen.\n"
-            "- Otra viñeta.\n"
-        ).splitlines()
-        check("una viñeta cortada se rearma entera",
-              any(l.startswith("- **Evaluacion:**") and "es el examen" in l for l in r))
-        check("y no deja huerfano el resto",
-              not any(l.startswith("y el 30%") for l in r))
-        check("la viñeta siguiente sigue siendo otra", "- Otra viñeta." in r)
-
-        r2 = _unir_lineas_de_parrafo("1. Primer paso que sigue\n   abajo.\n2. Segundo.\n")
-        check("los puntos numerados tambien se rearman",
-              any(l.startswith("1.") and "abajo." in l for l in r2.splitlines()))
-
-        r3 = _unir_lineas_de_parrafo("> [!examen] entra esto\n> y esto tambien.\n")
-        check("una cita de dos renglones es una sola cita",
-              len([l for l in r3.splitlines() if l.strip()]) == 1)
-
-        r4 = _unir_lineas_de_parrafo("| a | b |\n|---|---|\n| 1 | 2 |\n")
-        check("las tablas no se pegan entre si",
-              len([l for l in r4.splitlines() if l.strip()]) == 3)
-
-        r5 = _unir_lineas_de_parrafo('```mapa\n{"centro": "x",\n "ramas": []}\n```\n')
-        check("dentro de un bloque cercado no se toca nada",
-              '{"centro": "x",' in r5.splitlines())
-
-        alineacion = doc.styles["Normal"].paragraph_format.alignment
-        check("el cuerpo va justificado", alineacion == WD_ALIGN_PARAGRAPH.JUSTIFY)
-
-        xml = doc.settings.element.xml
-        check("con particion de palabras, para que no queden rios de espacios",
-              "autoHyphenation" in xml)
-
-        margen = doc.sections[0].left_margin.cm
-        check("y con la linea a un ancho legible", 3.0 <= margen <= 4.0, f"{margen}cm")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def probar_audio_largo_se_corta_solo() -> None:
@@ -1376,37 +778,6 @@ def probar_error_de_sesion_se_explica() -> None:
           "node_modules/.bin/claude" not in texto_otro)
 
 
-def probar_aviso_anki() -> None:
-    print("\n== aviso cuando Anki esta cerrado ==")
-    from orquestador import anki_connect, dialogo_anki
-
-    original = anki_connect.verificar_conexion
-    original_preg = dialogo_anki._preguntar
-    try:
-        anki_connect.verificar_conexion = lambda: True
-        pregunto = []
-        dialogo_anki._preguntar = lambda reintento=False: pregunto.append(1) or dialogo_anki.OPCION_SEGUIR
-        sigue = dialogo_anki.confirmar_antes_de_empezar()
-        check("con Anki abierto no molesta con ningun dialogo", sigue and not pregunto)
-
-        anki_connect.verificar_conexion = lambda: False
-        dialogo_anki._preguntar = lambda reintento=False: dialogo_anki.OPCION_SEGUIR
-        check("'continuar sin Anki' deja procesar", dialogo_anki.confirmar_antes_de_empezar())
-
-        # Dice que ya lo abrio pero sigue cerrado: se vuelve a comprobar en vez
-        # de creerle, y despues de unos intentos se sigue igual.
-        veces = []
-        dialogo_anki._preguntar = lambda reintento=False: (veces.append(reintento)
-                                                           or dialogo_anki.OPCION_YA_ABRI)
-        check("'ya lo abri' con Anki aun cerrado no bloquea",
-              dialogo_anki.confirmar_antes_de_empezar())
-        check("reintenta y avisa que sigue sin detectarlo",
-              len(veces) == dialogo_anki.INTENTOS_MAXIMOS and veces[1] is True, str(veces))
-    finally:
-        anki_connect.verificar_conexion = original
-        dialogo_anki._preguntar = original_preg
-
-
 def probar_titulo_nunca_falta() -> None:
     """
     El titulo era el unico campo que finalizar_clase leia sin respaldo, y una
@@ -1597,127 +968,9 @@ def probar_error_tardio_no_tira_el_trabajo() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def probar_no_afirmar_que_el_profe_no_pidio_nada() -> None:
-    """
-    "El profesor no anuncio nada" y "no se pudo averiguar" no pueden verse
-    igual. Antes se veian: un 429 devolvia dos listas vacias, el llamador las
-    cacheaba en el _skill.json, y como solo se reintenta cuando el campo no
-    existe, la clase quedaba afirmando en falso que no habia nada que estudiar.
-    """
-    print("\n== no afirmar que el profesor no pidio nada ==")
-    import asyncio
-
-    from orquestador import regenerar as rg
-
-    avisos = []
-    originales = (rg.query, rg.registrar_uso, rg.notificar_aviso)
-    rg.registrar_uso = lambda *a, **kw: None
-    rg.notificar_aviso = lambda t, c: avisos.append((t, c))
-    try:
-        LISTA = ('RESULTADO_LLAMADOS: {"avisos": [{"que": "prueba", "cuando": "", '
-                 '"textual": "el jueves", "seguro": true}], "evaluacion": []}')
-        VACIO = 'RESULTADO_LLAMADOS: {"avisos": [], "evaluacion": []}'
-
-        # 1. Respuesta con anuncios de verdad.
-        rg.query = _falsear_query(_mensajes_sdk(LISTA, False))
-        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s1"))
-        check("una respuesta con anuncios se devuelve tal cual",
-              r and len(r["avisos"]) == 1, str(r))
-        check("y no molesta con ningun aviso", avisos == [], str(avisos))
-
-        # 2. El profesor de verdad no anuncio nada. Es respuesta legitima.
-        rg.query = _falsear_query(_mensajes_sdk(VACIO, False))
-        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s2"))
-        check("dos listas vacias comprobadas son una respuesta valida",
-              r == {"avisos": [], "evaluacion": []}, str(r))
-        check("tampoco avisa nada en ese caso", avisos == [], str(avisos))
-
-        # 3. La API fallo y ademas no hubo linea: aqui si es "no se sabe".
-        rg.query = _falsear_query(
-            _mensajes_sdk("no alcance a responder", True, api_error_status=429)
-        )
-        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s3"))
-        check("un fallo de la API no se hace pasar por lista vacia", r is None, str(r))
-        check("y te avisa nombrando el codigo HTTP",
-              len(avisos) == 1 and "429" in avisos[0][1], str(avisos))
-        check("el aviso aclara que no es lo mismo que no haber anuncios",
-              "no significa" in avisos[0][1], str(avisos))
-
-        # 4. El modelo contesto pero sin la linea, sin error de la API.
-        avisos.clear()
-        rg.query = _falsear_query(_mensajes_sdk("no reporte nada", False))
-        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s4"))
-        check("una respuesta sin la linea tampoco se hace pasar por vacia", r is None)
-        check("y tambien avisa", len(avisos) == 1, str(avisos))
-
-        # 5. La API fallo DESPUES de que el modelo ya habia reportado. La
-        # respuesta vale: emitir la linea es la prueba de que el trabajo se
-        # hizo. Mismo criterio que en aplicar_skill y corregir_con_revision, y
-        # esta prueba existe para que nadie lo "corrija" en sentido contrario.
-        avisos.clear()
-        rg.query = _falsear_query(_mensajes_sdk(LISTA, True, api_error_status=529))
-        r = asyncio.run(rg.extraer_llamados("t.txt", "TERMODINAMICA", "s5"))
-        check("un error posterior al reporte no descarta la respuesta",
-              r and len(r["avisos"]) == 1, str(r))
-    finally:
-        (rg.query, rg.registrar_uso, rg.notificar_aviso) = originales
-
-
-def probar_lo_no_comprobado_no_se_cachea() -> None:
-    """
-    El dano real no era devolver vacio, era guardarlo: la condicion para
-    reintentar es que el campo no exista, asi que un vacio cacheado congela la
-    mentira para siempre.
-    """
-    print("\n== lo que no se pudo comprobar no se guarda ==")
-    import asyncio
-    import json as _json
-
-    from orquestador import regenerar as rg
-
-    tmp = Path(tempfile.mkdtemp(prefix="regenerar_falso_"))
-    usar_dir_pendientes(tmp)
-    originales = (rg.extraer_llamados, rg.generar_docx, rg._leer_nota)
-    rg.generar_docx = lambda *a, **kw: tmp / "falso.docx"
-    rg._leer_nota = lambda ruta, vault: "texto"
-    try:
-        cfg = {"rutas": {"vault_obsidian": str(tmp), "output": str(tmp)}}
-
-        def preparar(slug):
-            (tmp / f"{slug}.json").write_text(_json.dumps({
-                "ramo": "TERMODINAMICA", "fecha": "2026-08-13", "numero_clase": 2,
-                "archivo_texto": str(tmp / "t.txt"), "archivos_originales": [],
-            }), encoding="utf-8")
-            (tmp / f"{slug}_skill.json").write_text(_json.dumps({
-                "titulo": "Tema", "fuente": "f.md", "conceptos_repetidos": [],
-            }), encoding="utf-8")
-
-        # No se pudo averiguar: el _skill.json no debe quedar con "llamados".
-        preparar("sinsaber")
-        rg.extraer_llamados = lambda *a, **kw: _corutina(None)
-        asyncio.run(rg.regenerar("sinsaber", cfg))
-        guardado = _json.loads((tmp / "sinsaber_skill.json").read_text(encoding="utf-8"))
-        check("un resultado no comprobado no se guarda",
-              "llamados" not in guardado, str(guardado.get("llamados")))
-        check("asi la proxima regeneracion lo vuelve a intentar",
-              guardado.get("llamados") is None)
-
-        # Comprobado: si se guarda, para no volver a pagar la lectura.
-        preparar("sabido")
-        rg.extraer_llamados = lambda *a, **kw: _corutina({"avisos": [], "evaluacion": []})
-        asyncio.run(rg.regenerar("sabido", cfg))
-        guardado = _json.loads((tmp / "sabido_skill.json").read_text(encoding="utf-8"))
-        check("un vacio comprobado si se guarda",
-              guardado.get("llamados") == {"avisos": [], "evaluacion": []}, str(guardado))
-    finally:
-        (rg.extraer_llamados, rg.generar_docx, rg._leer_nota) = originales
-        usar_dir_pendientes(None)
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
 def probar_revision_fallida_no_dice_aprobado() -> None:
     """
-    El revisor es la unica barrera antes de que el material entre a Anki. Una
+    El revisor es la unica barrera antes de que el material entre al vault. Una
     revision que no llego a correr quedaba guardada como "aprobado", o sea con
     cara de comprobada y limpia, y el campo que guardaba la verdad no lo leia
     nadie.
@@ -1763,36 +1016,38 @@ def probar_revision_fallida_no_dice_aprobado() -> None:
 def probar_una_sola_comprobacion_de_vault() -> None:
     """
     La comprobacion que impide que una ruta colada en la transcripcion meta
-    cualquier archivo del disco en el .docx estaba duplicada en dos modulos.
+    cualquier archivo del disco en la hoja estuvo duplicada en dos modulos
+    (finalizar_clase y el antiguo regenerar.py, retirado el 14-09-2026). Queda
+    una sola implementacion, y hoja_html la importa en vez de copiarla.
     """
     print("\n== la frontera del vault se comprueba en un solo lugar ==")
+    import inspect
+
     from orquestador import finalizar_clase as fc
-    from orquestador import regenerar as rg
+    from orquestador import hoja_html
 
     vault = Path(tempfile.mkdtemp(prefix="notas_falsas_"))
     try:
         (vault / "buena.md").write_text("contenido de la nota", encoding="utf-8")
         fuera = Path(tempfile.mkdtemp(prefix="fuera_")) / "secreto.md"
         fuera.parent.mkdir(parents=True, exist_ok=True)
-        fuera.write_text("esto no puede terminar en el docx", encoding="utf-8")
+        fuera.write_text("esto no puede terminar en la hoja", encoding="utf-8")
 
-        for nombre, leer in (("finalizar_clase", fc._leer_nota), ("regenerar", rg._leer_nota)):
-            check(f"{nombre}: lee una nota de dentro del vault",
-                  leer(str(vault / "buena.md"), str(vault)) == "contenido de la nota")
-            check(f"{nombre}: no lee nada de fuera del vault",
-                  leer(str(fuera), str(vault)) == "")
-            check(f"{nombre}: una ruta vacia no revienta", leer(None, str(vault)) == "")
-            check(f"{nombre}: un archivo que no existe da vacio",
-                  leer(str(vault / "no_existe.md"), str(vault)) == "")
+        leer = fc._leer_nota
+        check("lee una nota de dentro del vault",
+              leer(str(vault / "buena.md"), str(vault)) == "contenido de la nota")
+        check("no lee nada de fuera del vault", leer(str(fuera), str(vault)) == "")
+        check("una ruta vacia no revienta", leer(None, str(vault)) == "")
+        check("un archivo que no existe da vacio",
+              leer(str(vault / "no_existe.md"), str(vault)) == "")
+        fuente_hoja = inspect.getsource(hoja_html)
+        check("hoja_html usa esa misma comprobacion y no una copia",
+              "def _leer_nota" not in fuente_hoja
+              and "from .finalizar_clase import _leer_nota" in fuente_hoja)
 
         shutil.rmtree(fuera.parent, ignore_errors=True)
     finally:
         shutil.rmtree(vault, ignore_errors=True)
-
-
-async def _corutina(valor):
-    """Envuelve un valor para sustituir una funcion async en las pruebas."""
-    return valor
 
 
 def _gate_deja_pasar(gate, ruta, clave: str = "file_path") -> bool:
@@ -1852,8 +1107,10 @@ def probar_gate_de_rutas() -> None:
         check("una llamada sin ruta no se bloquea",
               asyncio.run(gate({"tool_input": {}}, "id-1", None)) == {})
 
-        # La etapa que solo extrae los llamados a la accion corre con una sola
-        # raiz: el vault no tiene por que estar a su alcance (ver regenerar.py).
+        # Una etapa que solo necesita el proyecto puede correr con una sola raiz.
+        # Hoy ninguna lo hace (la unica era la extraccion de llamados del antiguo
+        # regenerar.py, retirado el 14-09-2026), pero el gate lo sigue aceptando
+        # y el mensaje de denegacion no puede nombrar un vault que no autorizo.
         solo_proyecto = construir_gate_de_rutas(RAIZ)
         check("con una sola raiz, el vault queda fuera",
               not _gate_deja_pasar(solo_proyecto, vault / "nota.md"))
@@ -1885,44 +1142,458 @@ def probar_gate_de_rutas() -> None:
         shutil.rmtree(vault, ignore_errors=True)
 
 
+def probar_hoja_se_sanea_y_queda_autocontenida() -> None:
+    """
+    La hoja se abre en el navegador y la escribe un modelo que leyo texto
+    derivado de una grabacion. Lo que se prueba es que ningun resto de ese texto
+    pueda ejecutar algo ni traer recursos de afuera, y que el diseño pedido
+    (oscuro fijo, impresion en blanco y negro) no dependa del modelo.
+    """
+    print("\n== la hoja se sanea y queda autocontenida ==")
+    import re
+
+    from orquestador import hoja_html as h
+
+    sucio = (
+        '<section class="bloque" onclick="x()"><h2><span>Tema</span></h2>'
+        "<script>alert(1)</script><style>body{display:none}</style>"
+        '<div class="t form" style="background:url(http://a.b/c.png)"><h3>A1 &amp; B</h3>'
+        '<p>ver <a href="https://a.b">esto</a><img src="x.png" onerror="x()">'
+        '<iframe src="//a.b"></iframe></p>'
+        '<svg viewBox="0 0 10 10" onload="x()"><defs><marker id="fl" refX="9">'
+        '<path d="M0 0L9 5z"/></marker></defs>'
+        '<line x1="0" y1="0" x2="9" y2="9" stroke="currentColor" marker-end="url(#fl)"/>'
+        '<text x="1" y="1" fill="url(http://a.b)">P</text></svg>'
+        '<math display="block"><mfrac><mi>a</mi><mi>b</mi></mfrac></math><mi>suelto</mi>'
+        "</div></section>"
+    )
+    limpio = h.sanear_html(sucio)
+    check("elimina script y su contenido", "<script" not in limpio and "alert" not in limpio)
+    check("elimina style y su contenido", "<style" not in limpio and "display:none" not in limpio)
+    check("elimina los atributos de evento", not re.search(r"\son\w+=", limpio), limpio)
+    check("elimina el atributo style", 'style="' not in limpio)
+    check("no deja nada que apunte afuera",
+          "http" not in limpio and "//a.b" not in limpio and "<a " not in limpio
+          and "<img" not in limpio and "<iframe" not in limpio, limpio)
+    check("conserva el texto de lo que desenvuelve", "esto" in limpio and "suelto" in limpio)
+    check("conserva el SVG con su viewBox bien escrito", '<svg viewBox="0 0 10 10">' in limpio)
+    check("conserva la flecha local del grafico", 'marker-end="url(#fl)"' in limpio)
+    check("conserva el MathML", "<mfrac><mi>a</mi><mi>b</mi></mfrac>" in limpio)
+    check("no acepta MathML fuera de <math>", "<mi>suelto" not in limpio)
+    check("el texto queda escapado", "A1 &amp; B" in limpio)
+
+    trabajo = {"ramo": "TERMODINÁMICA", "numero_clase": 4, "fecha": "2026-08-27"}
+    doc = h.armar_documento(trabajo, "Intervalos", limpio, "<div>tarjeta</div>", "nota.md")
+    check("la cabecera sale de los datos del trabajo, no del modelo",
+          "TERMODINÁMICA &middot; Clase 04 &middot; jueves 27 de agosto de 2026" in doc)
+    check("siempre en modo oscuro, sin seguir la configuracion del sistema",
+          "prefers-color-scheme" not in doc and "color-scheme:dark" in doc)
+    check("trae la version de impresion que ahorra tinta", "@media print" in doc)
+    check("ningun recurso externo en todo el documento",
+          not re.search(r'(?:src|href)=["\']?(?:https?:)?//', doc)
+          and "<script" not in doc and "<link" not in doc)
+    check("la leyenda explica las tres marcas",
+          all(m in doc for m in ("<b>CL</b>", "<b>?</b>", "<b>+</b>")))
+
+
+def probar_hoja_no_niega_anuncios_que_la_nota_trae() -> None:
+    """
+    El .docx decia "el profesor no anuncio fechas ni evaluacion" siempre que
+    los llamados llegaban en null, aunque la nota de aprendizaje si los traia.
+    Paso en cuatro clases reales, entre ellas Sistemas del 01-09-2026, donde
+    negaba el anuncio de la prueba del martes siguiente. La hoja no puede
+    repetirlo.
+    """
+    print("\n== la hoja no niega anuncios que la nota si trae ==")
+    from orquestador import hoja_html as h
+
+    nota = (
+        "# Aprendizaje - Duopolio\n\n## Lo que el profesor pidió\n\n### Avisos\n\n"
+        '- **Prueba la próxima semana.** El profesor lo confirmó: "el próximo\n'
+        '  martes".\n\n### Evaluación\n\n- **Capítulos 3 al 9, sin el 8.** Textual: "sin el 8".\n\n'
+        "## La materia\n\nOtra cosa\n"
+    )
+    tarjeta = h.tarjeta_lo_que_pidio(nota, None)
+    check("con llamados en null, la tarjeta sale de la nota",
+          "Prueba la próxima semana" in tarjeta, tarjeta)
+    check("une la viñeta que sigue en la linea de abajo",
+          "próximo martes" in tarjeta and "próximo\n" not in tarjeta, tarjeta)
+    check("conserva los subtitulos de la nota", "Avisos" in tarjeta and "Evaluación" in tarjeta)
+    check("no se mete en la seccion siguiente", "Otra cosa" not in tarjeta)
+    check("y nunca dice que no hubo anuncios", "no anunció" not in tarjeta)
+
+    vacio = h.tarjeta_lo_que_pidio("", {"avisos": [], "evaluacion": []})
+    check("llamados vacios y comprobados si pueden decir que no hubo anuncios",
+          "no anunció" in vacio)
+
+    desconocido = h.tarjeta_lo_que_pidio("", None)
+    check("sin nota y sin llamados dice que no se pudo comprobar",
+          "No se pudo comprobar" in desconocido)
+    check("y no lo disfraza de 'no hubo anuncios'", "no anunció" not in desconocido)
+
+    dudoso = h.tarjeta_lo_que_pidio(
+        "", {"avisos": [{"que": "control", "textual": "el jueves", "seguro": False}], "evaluacion": []}
+    )
+    check("un llamado dudoso lleva la marca de verificar", 'class="f duda"' in dudoso)
+
+    peligroso = h.tarjeta_lo_que_pidio(
+        "## Lo que el profesor pidió\n\n- <script>x()</script> **ojo**\n\n## Fin", None
+    )
+    check("el texto de la nota se escapa",
+          "<script>" not in peligroso and "&lt;script&gt;" in peligroso, peligroso)
+
+    # Como escribe la skill en la practica: subtitulos en negrita en vez de ###,
+    # puntos que declara no seguros y un callout de varias lineas. La primera
+    # version juntaba los subtitulos arriba y todas las viñetas abajo, asi que
+    # no se distinguia que entraba en la prueba y que era un aviso. Paso con
+    # Desempeño Organizacional del 12-08 y del 26-08-2026.
+    import re
+
+    real = (
+        "## Lo que el profesor pidió\n\n"
+        "**Entra en evaluación:**\n\n"
+        '- El control es sobre esta clase. Cita textual: "va a ser sobre\n'
+        '  los mecanismos".\n\n'
+        "**Avisos:**\n\n"
+        "- Va a subir una lectura *(no seguro respecto del contenido exacto)*.\n"
+        "- Solemne 1 entre el 7 y el 25. **(seguro: no)**\n\n"
+        "> [!verificar] Las fechas quedaron poco claras\n"
+        "> en el audio, confírmalas.\n\n"
+        "## La materia\n"
+    )
+    t = h.tarjeta_lo_que_pidio(real, None)
+    orden = [t.find("Entra en evaluación"), t.find("El control es sobre"),
+             t.find("Avisos"), t.find("Va a subir una lectura")]
+    check("respeta el orden de la nota: cada subtitulo antes de sus viñetas",
+          -1 not in orden and orden == sorted(orden), str(orden))
+    check("un subtitulo en negrita se muestra como subtitulo",
+          '<span class="clave">Entra en evaluación</span>' in t, t)
+    check("una viñeta que la nota declara no segura lleva la marca de verificar",
+          re.search(r'lectura <i>\(no seguro[^<]*</i>\.<span class="f duda">', t) is not None
+          and re.search(r'seguro: no\)</b><span class="f duda">', t) is not None, t)
+    check("una viñeta sin dudas conserva la marca de la clase",
+          re.search(r'mecanismos"\.<span class="f cl">', t) is not None, t)
+    check("el callout de varias lineas queda en un solo parrafo",
+          t.count('<p class="mini">') == 1 and "poco claras en el audio" in t, t)
+
+    # La advertencia en negrita puede ir en la linea siguiente de su viñeta.
+    # Tomarla como subtitulo le quitaba la duda a la viñeta y colgaba la
+    # siguiente de un titulo falso (Desempeño Organizacional, 12-08-2026).
+    continuacion = (
+        "## Lo que el profesor pidió\n\n"
+        "**Qué dijo que entra en evaluación**\n\n"
+        '- La nota de presentación reemplazaría la del examen. Textual: "le repito esa nota".\n'
+        "  **(seguro: no, el tramo del audio está cortado)**\n"
+        "- En los casos se evalúa el argumento.\n\n"
+        "## Fin\n"
+    )
+    t2 = h.tarjeta_lo_que_pidio(continuacion, None)
+    check("una advertencia en negrita pegada a su viñeta no se vuelve subtitulo",
+          t2.count('<span class="clave">') == 1, t2)
+    check("y esa viñeta conserva la marca de verificar",
+          re.search(r'cortado\)</b><span class="f duda">', t2) is not None, t2)
+    check("la viñeta siguiente sigue en la misma lista, con su marca de clase",
+          t2.count("<ul>") == 1 and re.search(r'argumento\.<span class="f cl">', t2) is not None, t2)
+
+    # Un enlace de Obsidian no funciona fuera del vault. Salia con los corchetes
+    # en la tarjeta de Desempeño Organizacional del 02-09-2026.
+    enlace = h.tarjeta_lo_que_pidio(
+        "## Lo que el profesor pidió\n\n"
+        "En esta clase no hubo anuncios. Ver [[Aprendizaje - Clase anterior]] y "
+        "[[Fuente - Otra clase|la fuente]].\n\n## Fin\n",
+        None,
+    )
+    check("un enlace de Obsidian queda como el nombre de la nota, sin corchetes",
+          "[[" not in enlace and "<i>Aprendizaje - Clase anterior</i>" in enlace
+          and "<i>la fuente</i>" in enlace, enlace)
+
+
+def probar_hoja_pule_usos_del_modelo() -> None:
+    """
+    Dos usos del modelo que se veian mal en la hoja de Desempeño Organizacional
+    del 26-08-2026: un subtitulo usado como etiqueta de una frase, que dejaba la
+    linea de abajo empezando con dos puntos, y la frase de que verificar metida
+    dentro de la marca "?", que se imprime chica y en superindice.
+    """
+    print("\n== la hoja corrige usos del modelo que se ven mal ==")
+    from orquestador import hoja_html as h
+
+    etiqueta = '<p><span class="clave">Dato de delegación</span>: el área comercial autoriza descuentos.</p>'
+    check("un subtitulo seguido de dos puntos pierde los dos puntos",
+          h.pulir_cuerpo(etiqueta) == '<p><span class="clave">Dato de delegación</span>el área comercial autoriza descuentos.</p>',
+          h.pulir_cuerpo(etiqueta))
+
+    marca = '<p>No los desarrolla en esta clase.<span class="f duda">? revisa si los explica en la lectura</span></p>'
+    pulida = h.pulir_cuerpo(marca)
+    check("la frase sale de la marca y la marca queda solo con su signo",
+          pulida == '<p>No los desarrolla en esta clase. Revisa si los explica en la lectura.<span class="f duda">?</span></p>',
+          pulida)
+
+    bien = ('<p>Dijo que entra.<span class="f cl">CL</span> Dudoso.<span class="f duda">?</span> '
+            'Propio.<span class="f mas">+</span></p>')
+    check("las marcas bien usadas no cambian", h.pulir_cuerpo(bien) == bien, h.pulir_cuerpo(bien))
+
+
+def probar_hoja_degrada_sin_mentir() -> None:
+    """
+    Si la redaccion falla, la clase no se pierde y la hoja lo dice arriba. Y la
+    etapa corre sin ninguna herramienta: recibe las notas en el prompt y
+    devuelve texto, asi que no depende de que un gate este bien escrito.
+    """
+    print("\n== la hoja degrada sin mentir ==")
+    import asyncio
+    import inspect
+
+    from orquestador import cancelacion
+    from orquestador import finalizar_clase as fc
+    from orquestador import hoja_html as h
+
+    cuerpo_bueno = '<section class="bloque"><p>' + "materia " * 120 + "</p></section>"
+    BUENA = f"{h.MARCA_INICIO}\n{cuerpo_bueno}\n{h.MARCA_FIN}"
+    opciones_vistas = []
+
+    def query_que_mira(mensajes):
+        async def _query(*a, **kw):
+            opciones_vistas.append(kw.get("options"))
+            for m in mensajes:
+                yield m
+        return _query
+
+    originales = (h.query, h.registrar_uso)
+    h.registrar_uso = lambda *a, **kw: None
+    try:
+        argumentos = ("nota de aprendizaje", "nota de fuente", "", [], "TERMODINAMICA",
+                      "Titulo", "2026-08-27", "s1")
+
+        h.query = query_que_mira(_mensajes_sdk(BUENA, False))
+        cuerpo, motivo = asyncio.run(h.redactar_cuerpo(*argumentos))
+        check("una respuesta completa se acepta", cuerpo is not None and motivo is None, str(motivo))
+
+        opciones = opciones_vistas[-1]
+        check("la etapa no tiene ninguna herramienta permitida", opciones.allowed_tools == [])
+        check("y prohibe explicitamente las que escriben, leen o ejecutan",
+              {"Bash", "Read", "Write", "Edit"} <= set(opciones.disallowed_tools))
+        check("no carga la configuracion del proyecto", opciones.setting_sources == [])
+
+        h.query = query_que_mira(_mensajes_sdk(BUENA, True, api_error_status=529))
+        cuerpo, motivo = asyncio.run(h.redactar_cuerpo(*argumentos))
+        check("un error de la API despues de entregar la hoja no la descarta",
+              cuerpo is not None, str(motivo))
+
+        h.query = query_que_mira(_mensajes_sdk("no alcance", True, api_error_status=429))
+        cuerpo, motivo = asyncio.run(h.redactar_cuerpo(*argumentos))
+        check("sin la hoja no hay cuerpo", cuerpo is None)
+        check("y el motivo nombra el problema de conexion", bool(motivo) and "429" in motivo, str(motivo))
+
+        h.query = query_que_mira(
+            _mensajes_sdk(f"{h.MARCA_INICIO}\n<p>casi nada</p>\n{h.MARCA_FIN}", False)
+        )
+        cuerpo, motivo = asyncio.run(h.redactar_cuerpo(*argumentos))
+        check("una hoja casi vacia se trata como falla",
+              cuerpo is None and "vacía" in (motivo or ""), str(motivo))
+
+        antes = len(opciones_vistas)
+        cuerpo, motivo = asyncio.run(h.redactar_cuerpo("", "", "", [], "X", "T", "2026-01-01", "s2"))
+        check("sin notas no gasta una llamada al modelo",
+              len(opciones_vistas) == antes and cuerpo is None)
+    finally:
+        h.query, h.registrar_uso = originales
+
+    doc = h.armar_documento({"ramo": "X", "numero_clase": 1, "fecha": "2026-08-27"},
+                            "T", None, "", "", "se corto", "s9")
+    check("la hoja degradada avisa que falta la materia", "Falta la materia condensada" in doc)
+    check("y aclara que eso no significa que la clase no tenga materia",
+          "no significa que la clase no tenga materia" in doc)
+
+    # El envoltorio de finalizar_clase degrada ante cualquier falla, salvo el
+    # aborto pedido desde la barra de menu, que tiene que seguir subiendo.
+    avisos = []
+    originales_fc = (fc.redactar_cuerpo, fc.notificar_aviso)
+    fc.notificar_aviso = lambda t, c: avisos.append((t, c))
+    try:
+        async def revienta(*a, **kw):
+            raise RuntimeError("fallo inventado")
+        fc.redactar_cuerpo = revienta
+        cuerpo, motivo = asyncio.run(fc._redactar_hoja("a", "f", "", [], "R", "T", "2026-01-01", "s"))
+        check("una falla de la redaccion no tira la clase",
+              cuerpo is None and "RuntimeError" in (motivo or ""), str(motivo))
+        check("y avisa al estudiante", len(avisos) == 1, str(avisos))
+
+        async def aborta(*a, **kw):
+            raise cancelacion.Abortado()
+        fc.redactar_cuerpo = aborta
+        try:
+            asyncio.run(fc._redactar_hoja("a", "f", "", [], "R", "T", "2026-01-01", "s"))
+            check("un aborto pedido no se traga", False, "no subio")
+        except cancelacion.Abortado:
+            check("un aborto pedido no se traga", True)
+    finally:
+        fc.redactar_cuerpo, fc.notificar_aviso = originales_fc
+
+    fuente = inspect.getsource(fc.procesar_clase_reconocida)
+    check("la redaccion va antes de la seccion critica, que no se puede abortar",
+          0 <= fuente.find("_redactar_hoja(") < fuente.find("seccion_critica()"))
+    check("el pipeline ya no arma el .docx ni agrega a Anki",
+          "generar_docx" not in fuente and "anki_connect" not in fuente
+          and "extraer_preguntas_respuestas" not in fuente)
+
+
+def probar_renumerar_corrige_la_hoja() -> None:
+    """
+    En los ramos con numeracion por orden, una clase mas antigua que llega tarde
+    corre el numero de las siguientes. El nombre del archivo ya se corregia,
+    pero la hoja lleva el numero tambien escrito en la cabecera.
+    """
+    print("\n== renumerar corrige tambien la cabecera de la hoja ==")
+    with tempfile.TemporaryDirectory() as tmp:
+        procesados, output = Path(tmp) / "Procesados", Path(tmp) / "Output"
+        (procesados / "RAMO").mkdir(parents=True)
+        (output / "RAMO").mkdir(parents=True)
+        (procesados / "RAMO" / "Clase 01 - 2026-08-03 - Primera.m4a").write_bytes(b"a")
+        (procesados / "RAMO" / "Clase 01 - 2026-08-10 - Segunda.m4a").write_bytes(b"a")
+        hoja = output / "RAMO" / "Clase 01 - 2026-08-10 - Segunda.html"
+        hoja.write_text(
+            '<p class="ramo">RAMO &middot; Clase 01 &middot; lunes</p><p>lo vimos en la Clase 01</p>',
+            encoding="utf-8",
+        )
+        nombres.renumerar_clases_ramo(procesados, output, "RAMO")
+        nueva = output / "RAMO" / "Clase 02 - 2026-08-10 - Segunda.html"
+        check("la hoja se renombra", nueva.is_file() and not hoja.exists())
+        texto = nueva.read_text(encoding="utf-8") if nueva.is_file() else ""
+        check("y su cabecera dice el numero nuevo", "&middot; Clase 02 &middot;" in texto, texto)
+        check("sin tocar la materia que menciona el numero viejo",
+              "lo vimos en la Clase 01" in texto, texto)
+
+
+def probar_clase_completa_termina_en_notas_y_hoja() -> None:
+    """
+    Desde el 14-09-2026 una clase termina en dos cosas y nada mas: las notas en
+    Obsidian y la hoja HTML. Anki y el .docx salieron del pipeline. Esto corre
+    procesar_clase_reconocida entera en un sandbox de ensayo, con las tres
+    llamadas al modelo reemplazadas por respuestas fijas, para comprobar sin
+    gastar cuota que la cadena completa sigue cerrando sin ellos.
+    """
+    print("\n== una clase completa termina en notas y hoja, sin Anki ni .docx ==")
+    import asyncio
+    import importlib.util
+
+    from orquestador import estado_vivo as ev
+    from orquestador import finalizar_clase as fc
+
+    for retirado in ("anki_connect", "dialogo_anki", "extraer_flashcards", "docx_generator",
+                     "formulas", "mapa_visual", "regenerar", "procesar_aparte"):
+        check(f"el modulo {retirado} ya no existe",
+              importlib.util.find_spec(f"orquestador.{retirado}") is None)
+    check("la barra de menu cuenta cuatro pasos",
+          len(ev.PASOS) == 4 and not hasattr(ev, "PASO_ANKI"), str(ev.PASOS))
+
+    base = Path(tempfile.mkdtemp(prefix="clase_completa_"))
+    ramo = "RAMO DE PRUEBA"
+    carpeta = base / "vault" / ramo
+    carpeta.mkdir(parents=True)
+    audio = base / "Input" / "clase.m4a"
+    audio.parent.mkdir()
+    audio.write_bytes(b"audio de mentira")
+    pendientes = base / "pendientes"
+    pendientes.mkdir()
+    texto = pendientes / "s1.txt"
+    texto.write_text("transcripcion de mentira", encoding="utf-8")
+
+    config = {
+        "rutas": {"vault_obsidian": str(base / "vault"), "output": str(base / "Output"),
+                  "procesados": str(base / "Procesados")},
+        "carpetas_ramo": {},
+        ensayo.CLAVE: True,
+    }
+    trabajo = {"slug": "s1", "fecha": "2026-09-09", "ramo": ramo, "numero_clase": 6,
+               "archivo_texto": str(texto), "archivos_originales": [str(audio)],
+               "reconocido": True}
+
+    async def skill_falsa(*a, **kw):
+        aprendizaje = carpeta / "Aprendizaje - Clase de prueba.md"
+        aprendizaje.write_text(
+            "# Aprendizaje\n\n## Lo que el profesor pidió\n\n"
+            '- Hay control el jueves. Textual: "el jueves hay control".\n\n'
+            "## La materia\n\nAlgo que estudiar.\n", encoding="utf-8")
+        fuente = carpeta / "Fuente - Clase de prueba.md"
+        fuente.write_text("# Fuente\n\nLo que se dijo.\n", encoding="utf-8")
+        return {"titulo": "Una clase de prueba", "fuente": str(fuente),
+                "aprendizaje": str(aprendizaje), "contexto": "",
+                "conceptos_repetidos": [], "llamados": None}
+
+    async def revision_falsa(*a, **kw):
+        return {"veredicto": "aprobado", "hallazgos": []}
+
+    cuerpo = ('<section class="bloque"><h2><span>Tema</span></h2><div class="rejilla">'
+              '<div class="t con"><h3><span class="n">A1</span>Idea</h3><p>'
+              + "palabra " * 120 + '<span class="f cl">CL</span></p></div></div></section>')
+
+    async def hoja_falsa(*a, **kw):
+        return cuerpo, None
+
+    pasos, avisos = [], []
+    originales = (fc.aplicar_skill, fc.revisar, fc.redactar_cuerpo, fc.notificar_progreso,
+                  fc.notificar_aviso, fc.notificar_exito, ev.fijar_clase)
+    fc.aplicar_skill, fc.revisar, fc.redactar_cuerpo = skill_falsa, revision_falsa, hoja_falsa
+    fc.notificar_progreso = lambda paso, detalle="": pasos.append((paso, detalle))
+    fc.notificar_aviso = lambda titulo, mensaje: avisos.append((titulo, mensaje))
+    fc.notificar_exito = lambda *a, **kw: None
+    ev.fijar_clase = lambda nombre: None
+    usar_dir_pendientes(pendientes)
+    try:
+        ruta = asyncio.run(fc.procesar_clase_reconocida(trabajo, config))
+        check("deja la hoja en Output, con el nombre de la clase",
+              ruta.is_file() and ruta.name == "Clase 06 - 2026-09-09 - Una clase de prueba.html",
+              str(ruta))
+        hoja = ruta.read_text(encoding="utf-8") if ruta.is_file() else ""
+        check("la hoja trae la materia y lo que pidio el profesor",
+              "palabra palabra" in hoja and "Hay control el jueves" in hoja)
+        check("las notas quedan en la carpeta del ramo en el vault",
+              (carpeta / "Aprendizaje - Clase de prueba.md").is_file())
+        archivados = list((base / "Procesados" / ramo).glob("Clase 06 - 2026-09-09 - *.m4a"))
+        check("el audio se archiva (en ensayo se copia)",
+              len(archivados) == 1 and audio.is_file(), str(archivados))
+        check("no se crea ningun .docx", not list(base.rglob("*.docx")))
+        check("ningun paso ni aviso habla de Anki o de flashcards",
+              not any(p in str(x).lower() for x in pasos + avisos for p in ("anki", "flashcard")),
+              str(pasos + avisos))
+        check("y no hubo avisos", avisos == [], str(avisos))
+    finally:
+        (fc.aplicar_skill, fc.revisar, fc.redactar_cuerpo, fc.notificar_progreso,
+         fc.notificar_aviso, fc.notificar_exito, ev.fijar_clase) = originales
+        usar_dir_pendientes(None)
+        shutil.rmtree(base, ignore_errors=True)
+
+
 if __name__ == "__main__":
     probar_nombres()
     probar_deteccion()
-    probar_flashcards()
-    probar_docx()
     probar_aislamiento_del_ensayo()
     probar_archivado_no_destructivo()
     probar_dialogo_nunca_descarta_solo()
     probar_el_nombre_del_archivo_manda_sobre_el_dia()
     probar_pantalla_de_confirmacion()
     probar_decisiones_de_pantalla_se_aplican()
-    probar_grabacion_aparte_nunca_deduce_el_ramo()
     probar_bitacora_deshace_todo()
     probar_bitacora_no_borra_lo_ajeno()
     probar_seccion_critica()
-    probar_formulas()
-    probar_contexto_va_primero()
-    probar_formulas_en_tablas()
-    probar_matematica_dentro_de_frases()
-    probar_mapa_y_secciones()
-    probar_llamados_a_la_accion()
-    probar_documento_no_se_repite()
-    probar_canales_de_enfasis()
-    probar_parrafos_y_justificado()
     probar_audio_largo_se_corta_solo()
     probar_el_borrado_no_alcanza_tus_carpetas()
     probar_dos_clases_no_se_fusionan()
     probar_las_notificaciones_no_se_pierden()
     probar_error_de_sesion_se_explica()
-    probar_aviso_anki()
     probar_titulo_nunca_falta()
     probar_gate_de_rutas()
     probar_error_del_sdk_se_explica()
     probar_error_tardio_no_tira_el_trabajo()
-    probar_no_afirmar_que_el_profe_no_pidio_nada()
-    probar_lo_no_comprobado_no_se_cachea()
     probar_revision_fallida_no_dice_aprobado()
     probar_una_sola_comprobacion_de_vault()
+    probar_hoja_se_sanea_y_queda_autocontenida()
+    probar_hoja_no_niega_anuncios_que_la_nota_trae()
+    probar_hoja_degrada_sin_mentir()
+    probar_hoja_pule_usos_del_modelo()
+    probar_renumerar_corrige_la_hoja()
+    probar_clase_completa_termina_en_notas_y_hoja()
 
     print()
     if fallos:

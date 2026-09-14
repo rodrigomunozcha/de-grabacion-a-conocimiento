@@ -61,3 +61,9 @@ orquestador/respaldo_notas/
 
 # Skill de terceros clonada aparte: tiene su propio repositorio.
 last30days-skill/
+
+# Fuentes que se incrustan en las hojas de repaso (Atkinson Hyperlegible Mono).
+# No se publican: la licencia OFL exige acompanar el archivo con su texto, y ese
+# texto no esta en el repositorio. Sin ellas la hoja usa la monoespaciada del
+# sistema y se ve casi igual. Para tenerlas, dejar los dos .woff2 en esa carpeta.
+orquestador/plantilla_hoja/fuentes/

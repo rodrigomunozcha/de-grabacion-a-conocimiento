@@ -28,10 +28,6 @@ poder hacer su trabajo.
   ```bash
   brew install terminal-notifier
   ```
-- **[Anki](https://apps.ankiweb.net)** de escritorio, con el addon **AnkiConnect**
-  instalado (Herramientas -> Complementos -> Obtener complementos -> código
-  `2055492159`). Anki tiene que estar *abierto* mientras se procesa una clase para que
-  las flashcards se agreguen (si no lo está, el sistema avisa y sigue sin Anki).
 - **Un vault de Obsidian** ya creado en algún lado de tu Mac (o de iCloud/OneDrive).
 - **Una herramienta propia de transcripción local** (Whisper corriendo en tu Mac) que
   exponga una función `transcribe(ruta_audio, language_profile, context_text)`. Este
@@ -77,7 +73,7 @@ poder hacer su trabajo.
    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 tests/test_orquestador.py
    ```
    Tarda unos segundos y no toca nada tuyo: no transcribe, no llama a la IA, no escribe
-   en tu vault ni en Anki, así que no gasta nada de tu plan. Si termina diciendo "Todas
+   en tu vault, así que no gasta nada de tu plan. Si termina diciendo "Todas
    las pruebas pasaron", las piezas están en su sitio. Si alguna falla, el nombre de la
    que falló te dice qué revisar antes de seguir.
 
@@ -110,7 +106,7 @@ Puedes volver a abrir esta misma app cuando quieras cambiar cualquiera de estos 
    que queda guardado para la próxima.
 4. Espera la notificación. Puede tardar unos minutos (transcribir + aplicar el método de
    estudio). Vas a recibir avisos de progreso y uno final con el nombre de la clase; si
-   haces clic en la notificación final, se abre el `.docx` generado.
+   haces clic en la notificación final, se abre la hoja de repaso en el navegador.
 
 Todas las preguntas ocurren en el paso 3, antes de que empiece el trabajo pesado. Después
 de apretar Procesar puedes irte: no va a haber más interrupciones.
@@ -146,7 +142,7 @@ procesarlas en cualquier orden y la numeración se acomoda sola.
 ### Ver cómo va, y detenerlo si hace falta
 
 Mientras se procesa una clase aparece un ícono en la barra superior del Mac, junto al
-reloj. Muestra en qué paso va (de 5), cuánto lleva y una estimación de lo que falta.
+reloj. Muestra en qué paso va (de 4), cuánto lleva y una estimación de lo que falta.
 Desaparece solo al terminar.
 
 La estimación solo se da donde hay con qué calcularla: la transcripción se estima desde
@@ -155,8 +151,8 @@ usan el promedio de tu propio historial. Si todavía no hay datos, no muestra un
 en vez de inventarlo.
 
 Al hacer clic en el ícono también aparece **"Detener y deshacer todo"**. No solo corta el
-proceso: revierte lo que se haya alcanzado a hacer (las notas escritas, el documento
-generado, las flashcards agregadas) y devuelve tu grabación a donde estaba, sin procesar.
+proceso: revierte lo que se haya alcanzado a hacer (las notas escritas y la hoja
+generada) y devuelve tu grabación a donde estaba, sin procesar.
 Queda como si nunca hubieras hecho clic.
 
 Hay unos pocos segundos, mientras se guarda el audio en su carpeta definitiva, en los que
@@ -180,8 +176,9 @@ actualización puede romper algo sin aviso. Después de un `brew upgrade`, un
 python3 -m orquestador.verificar
 ```
 
-Comprueba que todo esté en su lugar y responda, sin consumir cuota. Distingue
-entre lo que impide procesar clases y lo que es solo un aviso.
+Comprueba que todo esté en su lugar y responda. Del modelo solo gasta una pregunta
+mínima, para confirmar que tu sesión de Claude siga activa. Distingue entre lo que
+impide procesar clases y lo que es solo un aviso.
 
 ## Si algo no funciona
 
@@ -197,8 +194,6 @@ entre lo que impide procesar clases y lo que es solo un aviso.
   Espera a que termine y vuelve a intentar.
 - **"Todavía copiando":** el archivo de audio parece seguir transfiriéndose (por
   ejemplo, un AirDrop grande). Espera un momento y haz clic de nuevo.
-- **Faltaron las flashcards:** Anki no estaba abierto en el momento de procesar. Ábrelo y
-  agrega las preguntas a mano desde la nota de aprendizaje (siguen ahí completas).
 - **Un error puntual en una clase:** revisa `orquestador/logs/errores.log` (o haz clic en
   la notificación de error, te lleva directo ahí).
 - **Moviste una carpeta de ramo dentro del vault:** no hay que hacer nada. El sistema
@@ -232,7 +227,7 @@ tiene un tope de turnos para no consumir cuota sin control. Si cambias esa confi
 
 ### La revisión
 
-Como nadie mira el material antes de que se convierta en flashcards, hay una segunda
+Como nadie mira el material antes de que entre a tu vault y se condense en la hoja, hay una segunda
 llamada que lo revisa (`orquestador/revisor.py`). Es una corrida aparte, no una
 autocrítica dentro de la misma sesión: llega sin haber escrito nada y compara las notas
 contra la transcripción cruda. Busca contenido inventado, reconstrucciones presentadas
@@ -249,22 +244,24 @@ de cada clase.
 Toda esta etapa es opcional por diseño. Si la revisión falla, la clase se termina de
 procesar igual con lo que escribió la skill, y recibes un aviso de que quedó sin revisar.
 
-### El diseño del documento
+### El diseño de las notas y de la hoja
 
 `.claude/skills/transcripciones-a-conocimiento/references/diseno-documento.md` fija la
-estructura del documento, qué se destaca y qué se corta, con la evidencia detrás de cada
-regla. La idea que manda: cada cosa se cuenta una sola vez. Explicar la misma materia
-con varios envoltorios no refuerza, desplaza a lo que sí rinde.
+estructura de la nota de aprendizaje, qué se destaca y qué se corta, con la evidencia
+detrás de cada regla. La idea que manda: cada cosa se cuenta una sola vez. Explicar la
+misma materia con varios envoltorios no refuerza, desplaza a lo que sí rinde.
 
-Si cambias ese diseño, puedes rehacer los documentos de las clases ya procesadas sin
-volver a transcribir ni a analizar nada:
+La hoja de repaso tiene su propio diseño en `orquestador/plantilla_hoja/`: los estilos y
+las instrucciones que recibe el modelo. Si lo cambias, puedes rehacer la hoja de una clase
+ya procesada sin volver a transcribir ni a analizar nada:
 
 ```bash
-/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.regenerar
+/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.hoja_html
 ```
 
-Sin argumentos te lista las clases disponibles. Por defecto escribe un archivo aparte y
-no toca el documento que ya tenías. Con `--pisar` lo reemplaza.
+Sin argumentos te lista las clases disponibles. Cada hoja cuesta una llamada al modelo.
+Por defecto escribe una copia al lado y no toca la hoja que ya tenías. Con `--pisar` la
+reemplaza.
 
 ### Cuánto consume
 

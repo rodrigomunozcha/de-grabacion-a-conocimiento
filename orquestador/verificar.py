@@ -11,9 +11,10 @@ Ya paso: una actualizacion de Homebrew dejo terminal-notifier sin poder
 entregar avisos, y como el codigo no miraba el resultado, las notificaciones
 habrian desaparecido en silencio.
 
-No cuesta tokens: no llama al modelo, solo comprueba que las piezas esten y
-respondan. Correr despues de cada `brew upgrade`, `npm update` o actualizacion
-de macOS:
+Casi no cuesta tokens: la unica llamada al modelo es una pregunta minima para
+confirmar que la sesion siga viva (ver _sesion_de_claude). Lo demas solo
+comprueba que las piezas esten y respondan. Correr despues de cada
+`brew upgrade`, `npm update` o actualizacion de macOS:
 
     python3 -m orquestador.verificar
 """
@@ -55,10 +56,6 @@ def _paquetes_python() -> None:
     for modulo, para_que in [
         ("claude_agent_sdk", "hablar con el modelo"),
         ("mlx_whisper", "transcribir"),
-        ("docx", "armar el .docx"),
-        ("matplotlib", "dibujar formulas y mapas"),
-        ("PIL", "medir las imagenes"),
-        ("requests", "hablar con Anki"),
         ("anyio", "correr las etapas"),
     ]:
         try:
@@ -189,16 +186,6 @@ def _sesion_de_claude() -> None:
         _anotar(FALLA, "el modelo no responde", detalle[:80])
 
 
-def _anki() -> None:
-    from . import anki_connect
-
-    if anki_connect.verificar_conexion():
-        _anotar(OK, "Anki", "abierto y con AnkiConnect respondiendo")
-    else:
-        _anotar(AVISO, "Anki cerrado",
-                "no es un error: las clases se procesan igual, sin flashcards")
-
-
 def _icono_de_la_barra() -> None:
     binario = RAIZ / "barra_menu" / "BarraEstado"
     if binario.exists():
@@ -241,7 +228,6 @@ def main() -> int:
     _notificaciones()
     _icono_de_la_barra()
     _ventana_de_confirmacion()
-    _anki()
 
     fallas = [r for r in _resultados if r[0] == FALLA]
     avisos = [r for r in _resultados if r[0] == AVISO]

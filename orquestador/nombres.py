@@ -1,5 +1,5 @@
 """
-Convenciones de nombre compartidas entre la etapa 6 (docx) y el archivado de
+Convenciones de nombre compartidas entre la etapa 6 (la hoja) y el archivado de
 audio. El identificador permanente de una clase es su fecha real. "Clase N"
 es un numero calculado.
 
@@ -23,8 +23,6 @@ import hashlib
 import re
 from datetime import date
 from pathlib import Path
-
-from docx import Document
 
 PATRON_FECHA_EN_NOMBRE = re.compile(r"Clase \d+ - (\d{4}-\d{2}-\d{2}) - ")
 PATRON_ARCHIVO_CLASE = re.compile(r"^(Clase )(\d+)( - \d{4}-\d{2}-\d{2} - .+)$")
@@ -66,16 +64,16 @@ def calcular_numero_clase_por_orden(procesados_dir: Path, ramo: str, fecha: date
     return sorted(fechas_existentes).index(fecha.isoformat()) + 1
 
 
-def _corregir_titulo_docx(ruta: Path, prefijo_viejo: str, prefijo_nuevo: str) -> None:
-    doc = Document(str(ruta))
-    for p in doc.paragraphs:
-        if p.style.name == "Title" and p.text.startswith(prefijo_viejo):
-            texto_nuevo = p.text.replace(prefijo_viejo, prefijo_nuevo, 1)
-            for run in p.runs:
-                run.text = ""
-            p.runs[0].text = texto_nuevo
-            break
-    doc.save(str(ruta))
+def _corregir_titulo_html(ruta: Path, prefijo_viejo: str, prefijo_nuevo: str) -> None:
+    """
+    La hoja lleva el numero de clase en la cabecera, entre puntos medios (ver
+    hoja_html.armar_documento). Se reemplaza solo esa aparicion y no todas: el
+    mismo texto puede estar dentro de la materia ("lo vimos en la Clase 03").
+    """
+    texto = ruta.read_text(encoding="utf-8")
+    viejo = f"&middot; {prefijo_viejo} &middot;"
+    if viejo in texto:
+        ruta.write_text(texto.replace(viejo, f"&middot; {prefijo_nuevo} &middot;", 1), encoding="utf-8")
 
 
 def renumerar_clases_ramo(procesados_dir: Path, output_dir: Path, ramo: str) -> list[tuple[Path, Path]]:
@@ -84,9 +82,13 @@ def renumerar_clases_ramo(procesados_dir: Path, output_dir: Path, ramo: str) -> 
     si el numero de clase que quedo en el nombre de un archivo ya no
     corresponde al orden real de las fechas archivadas para ese ramo (por
     ejemplo, porque llego una clase mas antigua despues), lo corrige: renombra
-    el archivo (Procesados y Output) y, si es un .docx, tambien el titulo de
-    la portada. Nunca toca la nota de Obsidian (esa se identifica por fecha,
-    no por numero, asi que no le afecta este problema).
+    el archivo (Procesados y Output) y, si es una hoja .html, tambien el numero
+    que lleva escrito en la cabecera. Nunca toca la nota de Obsidian (esa se
+    identifica por fecha, no por numero, asi que no le afecta este problema).
+
+    Un .docx de antes del 11-09-2026 se sigue renombrando, pero su titulo
+    interno ya no se corrige: el pipeline dejo de generarlos y la libreria que
+    los editaba salio del proyecto el 14-09-2026.
 
     No usar esto para ramos del flujo automatico (semana de semestre): ahi un
     numero salteado es real (una semana sin clase) y no se debe compactar.
@@ -121,8 +123,8 @@ def renumerar_clases_ramo(procesados_dir: Path, output_dir: Path, ramo: str) -> 
             nuevo_nombre = f"{m_completo.group(1)}{numero_correcto:02d}{m_completo.group(3)}"
             nueva_ruta = carpeta / nuevo_nombre
             archivo.rename(nueva_ruta)
-            if nueva_ruta.suffix == ".docx":
-                _corregir_titulo_docx(
+            if nueva_ruta.suffix == ".html":
+                _corregir_titulo_html(
                     nueva_ruta, f"Clase {numero_actual:02d}", f"Clase {numero_correcto:02d}"
                 )
             renombrados.append((archivo, nueva_ruta))

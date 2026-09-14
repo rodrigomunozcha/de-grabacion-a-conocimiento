@@ -3,9 +3,9 @@ Modo ensayo: corre el pipeline completo de verdad, pero contra un sandbox
 desechable, sin tocar nada real.
 
 Por que existe. Probar un cambio en el pipeline significaba correrlo contra el
-vault real, el Anki real y los audios reales. Eso deja notas de prueba
-mezcladas con las de estudio, tarjetas basura en los mazos, y sobre todo
-MUEVE el audio original (archivado.py usa shutil.move, no copia). O sea, la
+vault real y los audios reales. Eso deja notas de prueba mezcladas con las
+de estudio, y sobre todo MUEVE el audio original (archivado.py usa
+shutil.move, no copia). O sea, la
 unica forma de saber si un cambio funcionaba era arriesgar el material real,
 que es justo lo que no se puede perder. Terminabas eligiendo entre probar o
 estar seguro.
@@ -13,24 +13,23 @@ estar seguro.
 Como funciona. No hay una version "de mentira" del pipeline: se corre el
 mismo codigo, con la misma skill y el mismo revisor. Lo unico que cambia es
 la configuracion que recibe: todas las rutas de escritura apuntan a una
-carpeta temporal, y las dos acciones que no son rutas (agregar a Anki y mover
-el audio original) consultan la marca `modo_ensayo` y se comportan distinto.
+carpeta temporal, y la unica accion que no es una ruta (mover el audio
+original) consulta la marca `modo_ensayo` y se comporta distinto.
 Asi el ensayo no puede desviarse del comportamiento real por accidente: si
 manana alguien agrega una etapa nueva que escribe en el vault, ya queda
 cubierta, porque escribe en la ruta que le paso la configuracion.
 
 Que se protege, concretamente:
   - el vault de Obsidian (las notas van a un vault de mentira)
-  - Anki (no se agrega ninguna tarjeta, solo se informa cuantas habrian sido)
   - el audio original (se copia en vez de moverse)
   - config.json (el cache de carpetas del ensayo no se guarda)
   - Output/ y Procesados/ (van al sandbox)
   - transcripciones_pendientes/ (los intermedios van al sandbox)
 
-Ese ultimo es el menos obvio y el mas peligroso de los seis. Un ensayo escribe
+Ese ultimo es el menos obvio y el mas peligroso de los cinco. Un ensayo escribe
 <slug>_skill.json, que es justamente la marca de "esta clase ya se proceso". Si
 esa marca quedara en la carpeta real, la siguiente corrida de verdad se saltaria
-la clase en silencio: sin notas, sin .docx y sin ningun error que lo delate.
+la clase en silencio: sin notas, sin documento y sin ningun error que lo delate.
 
 Uso:
     python3 -m orquestador.ensayo                      # lista que se puede ensayar
@@ -52,7 +51,7 @@ IGNORADAS_AL_REPLICAR = {".obsidian", ".trash", ".git", ".stfolder", "node_modul
 
 def es_ensayo(config: dict) -> bool:
     """Unica forma correcta de preguntar si estamos en un ensayo. Las etapas
-    que hacen algo irreversible (Anki, mover el audio) deben consultarla."""
+    que hacen algo irreversible (hoy, mover el audio) deben consultarla."""
     return bool(config.get(CLAVE))
 
 
@@ -119,7 +118,7 @@ def preparar(config: dict, carpeta_base: Path | None = None) -> tuple[dict, Path
 def _resumen(sandbox: Path) -> None:
     vault = sandbox / "vault"
     notas = sorted(vault.rglob("*.md"))
-    docx = sorted((sandbox / "output").rglob("*.docx"))
+    hojas = sorted((sandbox / "output").rglob("*.html"))
     audios = sorted((sandbox / "procesados").rglob("*"))
 
     print("\n" + "=" * 62)
@@ -130,8 +129,8 @@ def _resumen(sandbox: Path) -> None:
     for n in notas:
         print(f"  - {n.relative_to(vault)}  ({n.stat().st_size:,} bytes)")
 
-    print(f"\nDocumentos .docx generados ({len(docx)}):")
-    for d in docx:
+    print(f"\nHojas de repaso generadas ({len(hojas)}):")
+    for d in hojas:
         print(f"  - {d.name}  ({d.stat().st_size:,} bytes)")
 
     audios_archivos = [a for a in audios if a.is_file()]
@@ -171,7 +170,7 @@ async def ensayar(slug: str, conservar: bool = False) -> Path:
 
     print(f"Ensayando: {trabajo_metadata.get('ramo')} - {trabajo_metadata.get('fecha')}")
     print(f"Sandbox  : {sandbox}")
-    print("Nada de esto toca tu vault, tu Anki ni tus audios.\n")
+    print("Nada de esto toca tu vault ni tus audios.\n")
 
     try:
         await procesar_clase_reconocida(trabajo_metadata, config_ensayo)

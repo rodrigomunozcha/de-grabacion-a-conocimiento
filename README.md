@@ -1,49 +1,31 @@
 # Orquestador de estudio
 
 Suelta el audio de tu clase, haz un clic, y el sistema transcribe, destila las ideas en
-apuntes reales (no un resumen plano), revisa su propio trabajo con un segundo agente
-independiente, arma un `.docx` para leer y estudiar, archiva el audio, agrega las
-preguntas a Anki, y te avisa cuando termina. Todo en tu propio Mac, sin subir nada a
+apuntes reales de Obsidian (no un resumen plano), revisa su propio trabajo con un segundo
+agente independiente, lo condensa en una hoja de repaso en HTML de una a tres páginas,
+archiva el audio y te avisa cuando termina. Todo en tu propio Mac, sin subir nada a
 ningún lado.
 
 ## Así se ve
 
-<table>
-<tr>
-<td width="50%">
-<img src="docs/images/ejemplo-formulas.png" alt="Fórmulas dibujadas con tipografía matemática real">
-<br><sub>Las fórmulas se dibujan con tipografía matemática real, no como texto plano.</sub>
-</td>
-<td width="50%">
-<img src="docs/images/ejemplo-conceptos-repetidos.png" alt="Tabla de conceptos más repetidos durante la clase">
-<br><sub>El sistema nota qué se repitió durante la clase y por qué, no solo transcribe.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<img src="docs/images/ejemplo-mapa-clase.png" alt="Mapa de la clase dibujado automáticamente">
-<br><sub>El mapa de la clase se dibuja de verdad, no se describe en palabras.</sub>
-</td>
-<td width="50%">
-<img src="docs/images/notificacion-macos.png" alt="Notificación nativa de macOS al terminar">
-<br><sub>Notificación nativa de macOS al terminar, con clic para abrir el documento.</sub>
-</td>
-</tr>
-</table>
+<img src="docs/images/notificacion-macos.png" alt="Notificación nativa de macOS al terminar" width="420">
+<br><sub>Notificación nativa de macOS al terminar, con clic para abrir la hoja de repaso.</sub>
 
-*(Ejemplo con datos de una clase ficticia. Nada de contenido real de clases sale de este
-Mac, ver [Privacidad](#privacidad).)*
+Cada clase deja dos cosas: sus notas en tu vault de Obsidian, y una hoja de repaso en HTML
+que se abre sin conexión, en modo oscuro, y se imprime en blanco y negro.
+
+*(Nada de contenido real de clases sale de este Mac, ver [Privacidad](#privacidad).)*
 
 ## Cómo funciona por dentro
 
 1. **Transcribe** el audio con Whisper, corriendo en tu propio Mac.
-2. Un agente **destila** la transcripción en apuntes: ideas centrales explicadas desde
-   cero, preguntas con respuesta modelo, sesión de estudio y kit de repaso.
+2. Un agente **destila** la transcripción en notas de Obsidian: ideas centrales
+   explicadas desde cero, preguntas con respuesta modelo, sesión de estudio y kit de repaso.
 3. Un **segundo agente independiente**, en una sesión aparte que llega sin haber escrito
    nada, revisa esas notas contra la transcripción cruda y busca contenido sin respaldo.
    Si encuentra algo grave, manda a corregirlo antes de seguir.
-4. Arma el `.docx`, archiva el audio por ramo y fecha, agrega las preguntas a Anki, y
-   avisa con una notificación nativa de macOS (o si algo falló).
+4. Condensa las notas en una **hoja de repaso** en HTML, archiva el audio por ramo y
+   fecha, y avisa con una notificación nativa de macOS (o si algo falló).
 
 Todo el uso del día a día pasa por dos apps de doble clic. Nunca necesitas abrir Terminal
 para usarlo, solo para instalarlo la primera vez.
@@ -57,9 +39,10 @@ por su cuenta.
 
 ## Decisiones técnicas
 
-**El revisor es una sesión aparte, a propósito.** Nadie mira el material antes de que se
-convierta en flashcards, así que la revisión no puede ser una autocrítica dentro de la
-misma sesión que escribió las notas: eso sería el agente revisando su propio trabajo con
+**El revisor es una sesión aparte, a propósito.** Nadie mira el material antes de que
+entre a tu vault y se condense en la hoja, así que la revisión no puede ser una
+autocrítica dentro de la misma sesión que escribió las notas: eso sería el agente
+revisando su propio trabajo con
 el mismo sesgo. Llega sin contexto previo y compara contra la transcripción cruda.
 
 **Todo corre local, por diseño y no por casualidad.** El sistema se apoya en el plan
@@ -68,8 +51,9 @@ uso. Eso significa además que ninguna grabación ni apunte de una clase real sa
 equipo.
 
 **Cada llamada al modelo se mide.** Un `CLAUDE.md` propio del pipeline documenta cuánto
-cuesta cada etapa y por qué son tres llamadas (escribir, revisar, corregir) y no una sola
-ni cuatro. Antes de agregar una etapa nueva, el criterio es medir qué ahorra, no asumirlo.
+cuesta cada etapa y por qué una clase usa hasta cuatro llamadas (escribir, revisar,
+corregir y redactar la hoja) en vez de una sola. Antes de agregar una etapa nueva, el
+criterio es medir qué ahorra, no asumirlo.
 
 Guía completa de instalación, uso diario y detalles técnicos de cada decisión en
 [docs/INSTALACION.md](docs/INSTALACION.md).
@@ -86,7 +70,7 @@ Son unas mil líneas repartidas en cinco archivos, y se pueden leer sin instalar
 | [`SKILL.md`](.claude/skills/transcripciones-a-conocimiento/SKILL.md) | El flujo completo, en fases, y las reglas de honestidad que mandan sobre todo lo demás |
 | [`references/limpieza-y-reconstruccion.md`](.claude/skills/transcripciones-a-conocimiento/references/limpieza-y-reconstruccion.md) | Cómo convertir habla transcrita en una fuente confiable: qué descartar, cómo reconstruir el patrón socrático, cómo corregir errores del transcriptor, qué hacer con un gráfico de pizarra que solo se menciona |
 | [`references/metodo-mit.md`](.claude/skills/transcripciones-a-conocimiento/references/metodo-mit.md) | Los seis pasos del método de estudio activo: conceptos centrales, enseñar desde cero, preguntas, respuestas modelo, sesión de estudio y kit de repaso |
-| [`references/diseno-documento.md`](.claude/skills/transcripciones-a-conocimiento/references/diseno-documento.md) | Cómo se arma el `.docx`: estructura fija, presupuesto de énfasis, tipografía, cuándo cortar |
+| [`references/diseno-documento.md`](.claude/skills/transcripciones-a-conocimiento/references/diseno-documento.md) | Cómo se arma la nota de aprendizaje: estructura fija, presupuesto de énfasis, cuándo cortar |
 | [`references/formato-obsidian.md`](.claude/skills/transcripciones-a-conocimiento/references/formato-obsidian.md) | Las plantillas de las notas que quedan en el vault |
 
 **La regla que manda sobre el resto** está en las primeras líneas de `SKILL.md`: cuando la
@@ -103,14 +87,14 @@ Invocada a mano, nadie le pasa esos datos y nadie lee esa línea.
 
 Para usarla por tu cuenta hay que quitarle esas dos amarras: que pregunte a qué ramo
 pertenece la transcripción en vez de recibirlo, y que termine mostrando las notas en vez
-de reportar una línea para una máquina. El resto (la limpieza, el método, el diseño del
-documento) no depende del pipeline y sirve igual.
+de reportar una línea para una máquina. El resto (la limpieza, el método, el diseño de la
+nota) no depende del pipeline y sirve igual.
 
 ## Estructura del proyecto
 
 ```
 Input/               Donde dejas las grabaciones nuevas
-Output/               .docx generados, uno por clase, ordenados por ramo
+Output/               Hojas de repaso en HTML, una por clase, ordenadas por ramo
 Procesados/           Audios ya procesados, archivados por ramo
 boton_app/            Las apps de doble clic (Procesar Clases, Configurar Sistema)
 orquestador/          El código del pipeline
@@ -120,13 +104,14 @@ orquestador/          El código del pipeline
   ramo_por_nombre.py   Lee el ramo del nombre del archivo, antes de mirar el calendario
   pantalla_confirmacion.py  Pregunta por todas las grabaciones juntas antes de empezar
   carpetas.py          Ubica la carpeta de cada ramo en tu vault (y la recuerda)
-  regenerar.py         Rehace el .docx de una clase ya procesada, con el diseño actual
+  hoja_html.py         Redacta la hoja de repaso de cada clase y la sanea antes de guardarla
+  plantilla_hoja/      Estilos de la hoja y las instrucciones que recibe el modelo
   logs/uso.jsonl       Cuanto consumio cada llamada al modelo
 ventana_confirmacion/  La ventana nativa que confirma el ramo (Swift, se compila aquí)
 .claude/skills/        La skill que decide qué se escribe (ver la sección de arriba)
   transcripciones-a-conocimiento/
     SKILL.md             El flujo en fases y las reglas de honestidad
-    references/          Limpieza del ASR, método de estudio, diseño del .docx, Obsidian
+    references/          Limpieza del ASR, método de estudio, diseño de la nota, Obsidian
 docs/                  Instalación completa, uso diario y detalles técnicos
 ```
 

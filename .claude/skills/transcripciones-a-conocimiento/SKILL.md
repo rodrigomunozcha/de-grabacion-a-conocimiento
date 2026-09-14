@@ -205,22 +205,6 @@ de ponerse a prueba es de él, no algo que la skill le exija.
 
      No uses ningún otro tipo de callout en la nota de aprendizaje.
 
-   - **Un mapa visual, como datos y no como descripción.** No escribas "el mapa
-     tendría en el centro X y tres ramas": el sistema lo dibuja de verdad y lo
-     inserta como imagen en el `.docx`. Entrégalo dentro de la nota de
-     aprendizaje, en un bloque con este formato exacto:
-
-     ````
-     ```mapa
-     {"centro": "<idea central, 3 o 4 palabras>",
-      "ramas": [{"titulo": "<rama, hasta 5 palabras>",
-                 "puntos": ["<punto breve>", "<otro>"]}]}
-     ```
-     ````
-
-     Entre 3 y 5 ramas, y hasta 3 puntos por rama. Textos cortos: es un dibujo,
-     no un párrafo. Si el tema no se presta para un mapa, omite el bloque.
-
    - **Una nota de contexto previo**, guardada en la misma carpeta con el
      nombre `Contexto - <mismo título>`. Es lo único de todo el material que no
      sale de la transcripción: es el piso mínimo que hay que tener para
@@ -240,10 +224,10 @@ de ponerse a prueba es de él, no algo que la skill le exija.
        y todo se explica solo), no crees la nota y reporta `"contexto": ""`.
 
      **Fórmulas** (aplica a toda la nota, no solo al contexto). Una fórmula
-     importante va sola en su línea, entre `$$`, y **escrita en LaTeX**: el
-     sistema la dibuja como imagen con tipografía matemática real (barra de
-     fracción, radical que se estira, sombreros). Úsalo sin miedo, no cuesta
-     nada extra:
+     importante va sola en su línea, entre `$$`, y **escrita en LaTeX**:
+     Obsidian la muestra con tipografía matemática real (barra de fracción,
+     radical que se estira, sombreros) y la hoja de repaso la convierte a su
+     propio formato. Úsalo sin miedo, no cuesta nada extra:
 
      ```
      $$\bar{x} \pm z_{1-\alpha/2} \cdot \frac{\sigma}{\sqrt{n}}$$
@@ -254,7 +238,8 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      subíndice dentro de una frase, ponlo entre `$` con la forma `s^{2}`.
 
      **Dentro de tablas.** Una celda cuyo contenido es una fórmula también se
-     dibuja, así que escríbela entre `$` y en LaTeX, igual que las demás:
+     muestra como fórmula, así que escríbela entre `$` y en LaTeX, igual que
+     las demás:
 
      ```
      | Situación | Fórmula |
@@ -289,8 +274,8 @@ de ponerse a prueba es de él, no algo que la skill le exija.
      válido en una sola línea):
      `RESULTADO_ORQUESTADOR: {"titulo": "<el titulo que elegiste>", "fuente": "<ruta completa de la nota de fuente limpia>", "aprendizaje": "<ruta completa de la nota de aprendizaje>", "contexto": "<ruta completa de la nota de contexto previo, o cadena vacia si no hacia falta>", "conceptos_repetidos": [{"concepto": "...", "por_que": "..."}, ...5 en total], "llamados": {"avisos": [{"que": "<que hay que hacer>", "cuando": "<como lo dijo el profe, o cadena vacia>", "textual": "<frase textual>", "seguro": true}], "evaluacion": [{"tema": "<que entra>", "textual": "<frase textual>", "seguro": true}]}}`
 
-   Esto es para que el sistema de orquestación pueda ubicar las notas y armar el
-   `.docx` de respaldo sin tener que releer la transcripción de nuevo. No agregues
+   Esto es para que el sistema de orquestación pueda ubicar las notas y armar la
+   hoja de repaso sin tener que releer la transcripción de nuevo. No agregues
    esta línea cuando el estudiante te habla directamente sin ese contexto automatizado.
 
 Sobre la fecha: no es crítica. Si el año no viene en el archivo, no te detengas en eso ni

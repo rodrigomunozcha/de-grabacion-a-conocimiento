@@ -3,11 +3,13 @@ Encadena las etapas 4, 5 y 6 para las clases ya transcritas (etapa 3) y con
 ramo reconocido: una pasada de la skill que limpia, destila, elige titulo y
 detecta los conceptos mas repetidos (etapa 4+5 fusionadas, ver
 skill_runner.py), la revision independiente y su correccion cuando hay
-hallazgos graves, y por ultimo el .docx y el archivado del audio (etapa 6).
+hallazgos graves, y por ultimo la hoja de repaso en HTML y el archivado del
+audio (etapa 6).
 
-Eso son hasta tres llamadas al SDK por clase, no una: ver el encabezado de
-skill_runner.py para cuales son y por que la revision no se colapsa dentro de
-la sesion que escribio las notas.
+Eso son hasta cuatro llamadas al SDK por clase, no una: las tres de
+skill_runner.py (ver su encabezado para cuales son y por que la revision no se
+colapsa dentro de la sesion que escribio las notas) y la redaccion de la hoja
+(ver hoja_html.py para por que reemplazo al .docx).
 
 Los trabajos no reconocidos ya quedaron resueltos en Output/Sin clasificar
 por la etapa 3 y no pasan por aqui (ver transcripcion.py).
@@ -26,14 +28,20 @@ from pathlib import Path
 
 import anyio
 
-from . import anki_connect, cancelacion
+from . import cancelacion
 from .archivado import archivar_audio
 from .carpetas import resolver_carpeta_ramo
 from .config import cargar_config, dir_pendientes, guardar_config
-from .docx_generator import generar_docx
+from .hoja_html import TIMEOUT_SEGUNDOS as TIMEOUT_HOJA_SEGUNDOS
+from .hoja_html import (
+    armar_documento,
+    escribir_hoja,
+    redactar_cuerpo,
+    ruta_de_hoja,
+    tarjeta_lo_que_pidio,
+)
 from .ensayo import es_ensayo
 from . import estado_vivo
-from .extraer_flashcards import extraer_preguntas_respuestas
 from .nombres import renumerar_clases_ramo
 from .notificaciones import notificar_aviso, notificar_error, notificar_exito, notificar_progreso
 from .revisor import hallazgos_graves, revisar
@@ -50,13 +58,14 @@ TIMEOUT_REVISION_SEGUNDOS = 20 * 60
 
 def _leer_nota(ruta: str | None, vault_dir: str) -> str:
     """
-    Lee una de las notas que la skill dice haber escrito, para volcarla al
-    .docx. Las rutas vienen del JSON que reporta el modelo, asi que se
+    Lee una de las notas que la skill dice haber escrito, para armar la hoja
+    de repaso. Las rutas vienen del JSON que reporta el modelo, asi que se
     verifica que apunten dentro del vault antes de abrirlas: si no, una
     corrida que se desviara (ej. por texto raro colado en la transcripcion)
     podria hacer que el contenido de cualquier archivo del disco terminara
-    dentro del .docx y de las flashcards de Anki. Fuera del vault se devuelve
-    vacio en vez de leer: el .docx se arma igual, sin esa seccion.
+    dentro de la hoja. Y no solo eso: lo que se lee aqui entra al prompt de
+    otra llamada al modelo (ver hoja_html.py). Fuera del vault se devuelve
+    vacio en vez de leer: la hoja se arma igual, sin esa nota.
     """
     if not ruta:
         return ""
@@ -92,7 +101,7 @@ def _clase_ya_archivada(trabajo_metadata: dict) -> bool:
     archivo lo escribe la etapa 4, mucho antes de terminar. Una clase que se
     cortaba entre la etapa 4 y la 6 (revision, documento, archivado) quedaba
     marcada como lista para siempre: cada clic siguiente la saltaba en
-    silencio, sin audio movido, sin .docx y sin ningun aviso. Paso en vivo con
+    silencio, sin audio movido, sin documento y sin ningun aviso. Paso en vivo con
     SISTEMAS Y ESTRUCTURA DIGITAL (04-08-2026): la revision fallo con un bug
     ya corregido, la clase nunca llego a archivar_audio(), y siguio
     "terminada" en cada corrida siguiente porque _skill.json ya estaba ahi.
@@ -153,7 +162,7 @@ async def _revisar_y_corregir(
     # Tercer modo de falla de la revision, y el unico que no reventaba: el
     # revisor arranco pero no llego a emitir su resultado (ver revisor.py). Se
     # avisa igual que en los otros dos, porque para el estudiante el efecto es
-    # el mismo: las notas van al .docx y a Anki sin que nadie las comprobara.
+    # el mismo: las notas van a la hoja sin que nadie las comprobara.
     if revision.get("revision_fallida"):
         notificar_aviso(
             "La revision no se pudo completar",
@@ -186,6 +195,44 @@ async def _revisar_y_corregir(
             f"{slug}_revision.json y corrige a mano lo que corresponda.",
         )
         return resultado_skill
+
+
+async def _redactar_hoja(
+    texto_aprendizaje: str, texto_fuente: str, texto_contexto: str, conceptos: list,
+    ramo: str, titulo: str, fecha: str, slug: str,
+) -> tuple[str | None, str | None]:
+    """
+    Envoltorio que degrada. Si la redaccion falla o tarda demasiado, la clase
+    sigue con una hoja que dice arriba y en rojo que le falta la materia
+    condensada (ver hoja_html.armar_documento). Las notas ya estan en el vault,
+    y perder la clase entera por la hoja seria mucho peor que una hoja
+    incompleta y honesta.
+
+    Abortado se deja pasar a proposito. Hereda de Exception, asi que un except
+    Exception a secas se lo tragaria y la corrida seguiria como si nada despues
+    de que el estudiante pidio detenerla desde la barra de menu.
+    """
+    try:
+        with anyio.fail_after(TIMEOUT_HOJA_SEGUNDOS):
+            cuerpo, motivo = await redactar_cuerpo(
+                texto_aprendizaje, texto_fuente, texto_contexto, conceptos,
+                ramo, titulo, fecha, slug,
+            )
+    except cancelacion.Abortado:
+        raise
+    except TimeoutError:
+        cuerpo, motivo = None, "la redacción tardó demasiado y se cortó"
+    except Exception as e:
+        cuerpo, motivo = None, f"falló la redacción ({type(e).__name__})"
+
+    if motivo:
+        notificar_aviso(
+            "La hoja de repaso salió incompleta",
+            f"{ramo}: {motivo}. La clase se procesó igual: las notas completas "
+            "están en Obsidian, y la hoja avisa arriba que le falta la materia. "
+            "Se puede volver a generar más tarde.",
+        )
+    return cuerpo, motivo
 
 
 async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitacora=None) -> Path:
@@ -243,23 +290,34 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
     texto_fuente = _leer_nota(resultado_skill.get("fuente"), vault_dir)
     texto_aprendizaje = _leer_nota(resultado_skill.get("aprendizaje"), vault_dir)
     # Opcional a proposito: si la skill no la genero (una clase que no
-    # necesita contexto previo), el .docx se arma igual sin esa seccion.
+    # necesita contexto previo), la hoja se arma igual sin ella.
     texto_contexto = _leer_nota(resultado_skill.get("contexto"), vault_dir)
 
     trabajo = dict(trabajo_metadata)
     trabajo["archivos"] = trabajo_metadata["archivos_originales"]
 
     notificar_progreso(estado_vivo.PASO_DOCUMENTO, titulo)
+    # La redaccion va antes de la seccion critica y no dentro: tarda minutos y
+    # tiene que poder abortarse. Adentro solo queda escribir el archivo y mover
+    # el audio, que duran segundos. El .docx cabia adentro porque se armaba sin
+    # modelo, en un instante.
+    cuerpo, motivo = await _redactar_hoja(
+        texto_aprendizaje, texto_fuente, texto_contexto, conceptos, ramo, titulo,
+        trabajo.get("fecha", ""), slug,
+    )
+    documento = armar_documento(
+        trabajo, titulo, cuerpo,
+        tarjeta_lo_que_pidio(texto_aprendizaje, resultado_skill.get("llamados")),
+        Path(resultado_skill.get("aprendizaje") or "").name, motivo, slug,
+    )
+
     # El unico tramo que no se puede cortar por la mitad: mover el audio lo
     # deja entre dos carpetas. Dura segundos y un aborto pedido aqui se aplica
     # apenas termina (ver cancelacion.py).
     with cancelacion.seccion_critica():
-        ruta_docx = generar_docx(
-            trabajo, titulo, texto_fuente, texto_aprendizaje, conceptos, config,
-            texto_contexto, resultado_skill.get("llamados"),
-        )
+        ruta_hoja = escribir_hoja(ruta_de_hoja(trabajo, titulo, config), documento)
         if bitacora is not None:
-            bitacora.archivo_creado(ruta_docx)
+            bitacora.archivo_creado(ruta_hoja)
         archivar_audio(trabajo, titulo, config, bitacora)
 
     if trabajo.get("numeracion") == "orden":
@@ -270,27 +328,12 @@ async def procesar_clase_reconocida(trabajo_metadata: dict, config: dict, bitaco
             Path(config["rutas"]["procesados"]), Path(config["rutas"]["output"]), ramo
         )
 
-    tarjetas = extraer_preguntas_respuestas(texto_aprendizaje)
-    if tarjetas and es_ensayo(config):
-        # Anki no tiene deshacer comodo ni mazos desechables: en un ensayo no
-        # se toca, solo se informa cuantas tarjetas habrian entrado.
-        notificar_progreso(estado_vivo.PASO_ANKI, f"ensayo: {len(tarjetas)} tarjetas no se agregan")
-    elif tarjetas:
-        if anki_connect.verificar_conexion():
-            notificar_progreso(estado_vivo.PASO_ANKI, f"{len(tarjetas)} tarjetas")
-            anki_connect.crear_mazo_si_no_existe(ramo)
-            ids = anki_connect.agregar_flashcards(ramo, tarjetas)
-            if bitacora is not None:
-                bitacora.notas_anki(ids)
-        else:
-            notificar_aviso(
-                "Faltaron las flashcards",
-                f"{titulo}: Anki no estaba abierto, no se agregaron {len(tarjetas)} tarjetas. "
-                "Las preguntas siguen en la nota de aprendizaje, puedes agregarlas a mano.",
-            )
-
-    notificar_exito(trabajo, titulo, ruta_docx)
-    return ruta_docx
+    # Aqui terminaba antes con las flashcards de Anki. Salieron el 14-09-2026,
+    # junto con el .docx: una clase termina en sus notas de Obsidian y en la
+    # hoja, y nada mas. Las preguntas con sus respuestas modelo siguen en la
+    # nota de aprendizaje.
+    notificar_exito(trabajo, titulo, ruta_hoja)
+    return ruta_hoja
 
 
 async def procesar_pendientes_reconocidos(config: dict | None = None, bitacora=None) -> list[Path]:
@@ -306,12 +349,12 @@ async def procesar_pendientes_reconocidos(config: dict | None = None, bitacora=N
             continue  # ya se proceso antes
 
         try:
-            ruta_docx = await procesar_clase_reconocida(trabajo_metadata, config, bitacora)
+            ruta_hoja = await procesar_clase_reconocida(trabajo_metadata, config, bitacora)
         except Exception as e:
             contexto = f"{trabajo_metadata['ramo']} - {trabajo_metadata['fecha']}"
             notificar_error(contexto, f"{type(e).__name__}: {e}")
             continue
-        generados.append(ruta_docx)
+        generados.append(ruta_hoja)
     return generados
 
 

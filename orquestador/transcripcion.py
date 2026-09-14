@@ -214,37 +214,6 @@ def _verificar_parte(texto: str, ruta_audio: str, duracion_s: float | None) -> N
     )
 
 
-# Una clase de una hora deja miles de caracteres. Por debajo de esto no hay
-# transcripcion, hay ruido: no alcanza ni para una nota, y menos para la
-# revision posterior.
-MINIMO_CARACTERES_UTILES = 200
-
-
-def _verificar_que_hay_texto(texto: str, archivos: list) -> None:
-    """
-    Corta aca si la transcripcion salio vacia o casi vacia.
-
-    Existe por una clase real de casi dos horas: Whisper corrio 14 minutos y
-    devolvio cero caracteres. El pipeline siguio igual, le paso un archivo
-    vacio a la skill, y el error que vio el estudiante fue "la skill no reporto
-    RESULTADO_ORQUESTADOR", que no dice nada del problema real y ademas gasto
-    una llamada al modelo para nada.
-
-    Fallar aca cuesta cero y el mensaje apunta al audio, que es donde hay que
-    mirar. El audio ademas no se archiva, asi que se puede reintentar.
-    """
-    utiles = len(texto.strip())
-    if utiles >= MINIMO_CARACTERES_UTILES:
-        return
-    nombres = ", ".join(Path(a).name for a in archivos)
-    raise ValueError(
-        f"La transcripcion quedo vacia o casi vacia ({utiles} caracteres) para: {nombres}. "
-        "El audio no se proceso y sigue en su carpeta. Suele pasar cuando la grabacion "
-        "esta muy baja de volumen o cuando es muy larga: probar cortandola en partes de "
-        "30 a 40 minutos y dejarlas juntas en Input, que el sistema las une solas."
-    )
-
-
 def _guardar_pendiente(trabajo: dict, texto: str, bitacora=None) -> None:
     dir_pendientes().mkdir(parents=True, exist_ok=True)
     slug = slug_pendiente(trabajo["clave"])

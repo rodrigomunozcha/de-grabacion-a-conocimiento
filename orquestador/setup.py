@@ -82,7 +82,7 @@ def main():
         rutas_existentes.get("input", DEFAULTS_RUTAS["input"]),
     )
     output_dir = preguntar_ruta(
-        "Carpeta Output (donde quedan los .docx)",
+        "Carpeta Output (donde quedan las hojas de repaso)",
         rutas_existentes.get("output", DEFAULTS_RUTAS["output"]),
     )
     procesados_dir = preguntar_ruta(

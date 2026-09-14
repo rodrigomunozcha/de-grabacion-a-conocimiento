@@ -168,7 +168,7 @@ existentes sin permiso.
 Nombre: `Contexto - <mismo título que la nota de aprendizaje>`
 
 Es lo primero que el estudiante lee, antes de la clase. Menos de una página.
-No supone conocimiento previo. Va al frente del `.docx` que arma el sistema.
+No supone conocimiento previo.
 
 ```markdown
 ---

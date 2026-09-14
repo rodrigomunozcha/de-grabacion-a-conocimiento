@@ -3,8 +3,8 @@ Registro de todo lo que una corrida cambia en el disco, para poder devolverlo
 exactamente a como estaba si el estudiante decide abortar.
 
 Por que existe. Detener el procesamiento a mitad de camino no sirve de nada si
-deja restos: media nota en el vault, el audio movido a Procesados, tarjetas
-sueltas en Anki. El estudiante tendria que salir a limpiar a mano justo cuando
+deja restos: media nota en el vault, la hoja ya escrita, el audio movido a
+Procesados. El estudiante tendria que salir a limpiar a mano justo cuando
 lo que queria era cancelar. "Abortar" solo es util si significa que no paso
 nada.
 
@@ -35,7 +35,6 @@ ARCHIVO_CREADO = "archivo_creado"
 ARCHIVO_MODIFICADO = "archivo_modificado"
 CARPETA_CREADA = "carpeta_creada"
 AUDIO_MOVIDO = "audio_movido"
-NOTAS_ANKI = "notas_anki"
 
 
 class Bitacora:
@@ -58,11 +57,6 @@ class Bitacora:
 
     def audio_movido(self, origen: str | Path, destino: str | Path) -> None:
         self._anotar({"tipo": AUDIO_MOVIDO, "origen": str(origen), "destino": str(destino)})
-
-    def notas_anki(self, ids: list) -> None:
-        limpios = [i for i in ids if i]
-        if limpios:
-            self._anotar({"tipo": NOTAS_ANKI, "ids": limpios})
 
     def respaldar(self, ruta: str | Path) -> None:
         """
@@ -164,13 +158,8 @@ class Bitacora:
                 return [f"El audio volvio a {origen.parent.name}/"]
             return []
 
-        if tipo == NOTAS_ANKI:
-            from . import anki_connect
-            if anki_connect.verificar_conexion():
-                anki_connect.borrar_notas(cambio["ids"])
-                return [f"Se quitaron {len(cambio['ids'])} tarjetas de Anki"]
-            return ["Anki estaba cerrado: las tarjetas siguen ahi, hay que borrarlas a mano"]
-
+        # Un tipo desconocido no se revierte. Incluye "notas_anki", de antes del
+        # 14-09-2026, cuando el pipeline todavia agregaba tarjetas a Anki.
         return []
 
     # ---- persistencia ----

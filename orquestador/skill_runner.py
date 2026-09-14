@@ -35,7 +35,7 @@ propio SDK sobre estas mismas opciones:
     misma carpeta.
   - NO evita la memoria automatica de la cuenta: el MEMORY.md del usuario
     (1.021 tokens) entra igual, con setting_sources=["project"] y tambien con
-    [], que es lo que usan revisor.py y regenerar.py. O sea que la corrida SI
+    [], que es lo que usan revisor.py y hoja_html.py. O sea que la corrida SI
     depende de un archivo global que puede cambiar sin aviso, incluido el
     revisor, que se diseño para llegar sin contexto previo. No hay opcion del
     SDK para apagarlo (exclude_dynamic_sections solo lo reinyecta en el primer
@@ -84,7 +84,7 @@ MAX_TURNS = 30
 
 # Tope de la tercera pasada, la que corrige lo que encontro el revisor. Va
 # aparte y con nombre para que los topes del pipeline se vean todos juntos
-# (los otros dos estan en revisor.py y regenerar.py). Coincide con el de
+# (los otros estan en revisor.py y hoja_html.py). Coincide con el de
 # arriba por ahora, pero mide cosas distintas: aca son ediciones puntuales
 # sobre notas que ya existen, no el trabajo completo.
 MAX_TURNS_CORRECCION = 30
@@ -95,15 +95,15 @@ def construir_gate_de_rutas(*raices_permitidas: str | Path):
     Hook PreToolUse que acota al agente a las carpetas donde legitimamente
     tiene algo que hacer. Cada llamador pasa las suyas: las etapas que escriben
     notas pasan el proyecto (la transcripcion a leer y los archivos de la
-    propia skill) y el vault de Obsidian (donde escriben), y la que solo extrae
-    los llamados a la accion pasa solo el proyecto (ver regenerar.py).
+    propia skill) y el vault de Obsidian (donde escriben).
 
     Las raices llegan por parametro y no se deducen aqui dentro a proposito.
     Antes esta funcion recibia el vault y agregaba PROJECT_ROOT por su cuenta,
     con dos consecuencias: leyendo la llamada no se podia saber a que quedaba
-    autorizado el agente, y regenerar.py, que solo necesita el proyecto,
-    terminaba pasandolo en el parametro del vault, asi que el mensaje de
-    denegacion nombraba un "vault de Obsidian" que era la carpeta del proyecto.
+    autorizado el agente, y regenerar.py (retirado el 14-09-2026), que solo
+    necesitaba el proyecto, terminaba pasandolo en el parametro del vault, asi
+    que el mensaje de denegacion nombraba un "vault de Obsidian" que era la
+    carpeta del proyecto.
 
     Existe porque la corrida es automatizada y usa permission_mode
     "bypassPermissions": nadie va a ver ni contestar una peticion de permiso,
@@ -257,7 +257,7 @@ def normalizar_resultado(resultado: dict, titulo_respaldo: str) -> dict:
     con las notas ya escritas en el vault. Y como el _skill.json quedaba
     guardado, cada reintento leia ese mismo archivo y fallaba en el mismo
     punto: la clase quedaba imposible de terminar hasta borrar el archivo a
-    mano. El titulo solo nombra el .docx, no puede costar la clase.
+    mano. El titulo solo nombra la hoja de repaso, no puede costar la clase.
     """
     titulo = resultado.get("titulo")
     if not isinstance(titulo, str) or not titulo.strip():
@@ -265,7 +265,7 @@ def normalizar_resultado(resultado: dict, titulo_respaldo: str) -> dict:
         # despues de un " - ", y uno vacio deja el archivo terminado en guion.
         resultado["titulo"] = titulo_respaldo.strip() or "Clase sin titulo"
     if not isinstance(resultado.get("conceptos_repetidos"), list):
-        # El .docx se arma igual sin esa seccion (ver docx_generator.py).
+        # La hoja se arma igual sin esa seccion (ver hoja_html.py).
         resultado["conceptos_repetidos"] = []
     return resultado
 

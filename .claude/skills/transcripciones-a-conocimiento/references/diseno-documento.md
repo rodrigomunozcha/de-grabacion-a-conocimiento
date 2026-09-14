@@ -79,10 +79,10 @@ destacado no tiene nada destacado.
 Por eso hay exactamente **tres canales visuales**, cada uno con un significado, y ninguno
 se usa para otra cosa:
 
-| Canal | Significa | Se ve como |
+| Canal | Significa | Se marca con |
 |---|---|---|
-| **Barra ámbar a la izquierda** | El profesor dijo que esto entra en una evaluación | Fondo ámbar claro, barra lateral, etiqueta corta |
-| **Recuadro gris con borde** | Aviso de confiabilidad: esto puede estar mal | Cursiva, junto al contenido dudoso, nunca al principio |
+| **Callout de examen** | El profesor dijo que esto entra en una evaluación | `> [!examen]`, pegado al tema, con la cita |
+| **Callout de verificar** | Aviso de confiabilidad: esto puede estar mal | `> [!verificar]`, junto al contenido dudoso, nunca al principio |
 | **Negrita** | El término técnico la primera vez que aparece | Nada más |
 
 Lo que **no** se usa: subrayado, colores de fuente distintos por sección, mayúsculas
@@ -93,22 +93,6 @@ bloque de advertencias antes de empezar se saltea, y además obliga a recordar l
 advertencia durante diez páginas hasta llegar al párrafo al que se refería. Puesto al
 lado del contenido, se lee cuando sirve.
 
-## Tipografía
-
-La línea óptima para leer está entre 50 y 75 caracteres, con 66 como referencia habitual.
-Más largo que eso y el ojo pierde el renglón al volver a la izquierda, lo que baja la
-comprensión.
-
-- **Márgenes de 3,5 cm** a izquierda y derecha. Con cuerpo 11 deja la línea en unos 75
-  caracteres. Los márgenes de 2,5 cm que trae Word por defecto dan 95 y son demasiado.
-- **Cuerpo 11**, interlineado **1,35**, y espacio después del párrafo. Por debajo de 1,4
-  veces el cuerpo el texto se siente apretado y cuesta seguir el renglón, así que el
-  espacio entre párrafos compensa.
-- **Encabezados en un solo color** de la familia del acento. No un tono distinto por
-  nivel: el nivel ya lo dice el tamaño.
-- **Nunca dos encabezados seguidos** diciendo lo mismo. Si la sección ya tiene título, la
-  nota que va dentro no repite el suyo.
-
 ## Segmentar
 
 El **principio de segmentación** (10 de 10 tests, d = 0,79) dice que se aprende más
@@ -118,6 +102,9 @@ exactamente este caso.
 
 En la práctica: subtítulos frecuentes, párrafos cortos, y ninguna sección de más de una
 página sin un corte. Un muro de texto de dos páginas se salta entero.
+
+**Nunca dos encabezados seguidos** diciendo lo mismo. Si la sección ya tiene título, lo
+que va dentro no repite el suyo.
 
 ## Fuentes
 
@@ -135,6 +122,3 @@ página sin un corte. Un muro de texto de dos páginas se salta entero.
   signaling affects learning with media*. Educational Research Review, 23.
 - Sweller, J., y col., sintetizado en *Cognitive load theory: Research that teachers
   really need to understand*, NSW Department of Education (2017).
-- Dyson, M. C., y Haselgrove, M., sobre longitud de línea, recogido en las revisiones de
-  legibilidad de Baymard Institute y en *Optimal Line Length in Reading: A Literature
-  Review* (Visible Language).

@@ -126,7 +126,7 @@ final class Controlador: NSObject, NSApplicationDelegate {
 
     private func dibujarEnProgreso(_ estado: Estado) {
         let paso = estado.paso ?? 0
-        let total = estado.total ?? 5
+        let total = estado.total ?? 4
         // El avance interno del paso, si lo hay: transcribir una clase larga
         // son media hora en el mismo paso, y sin esto el icono se ve tan
         // quieto como si estuviera colgado.
@@ -192,7 +192,7 @@ final class Controlador: NSObject, NSApplicationDelegate {
         alerta.messageText = "¿Detener el procesamiento?"
         alerta.informativeText = """
         Se deshará todo lo que se haya hecho hasta ahora: las notas que se \
-        alcanzaron a escribir, el documento generado y las flashcards agregadas. \
+        alcanzaron a escribir y la hoja de repaso. \
         Tu grabación vuelve a donde estaba, sin procesar.
 
         Es como si nunca hubieras hecho clic.
