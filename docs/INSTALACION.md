@@ -173,8 +173,12 @@ actualización puede romper algo sin aviso. Después de un `brew upgrade`, un
 `npm update` o una actualización de macOS, conviene correr:
 
 ```bash
-python3 -m orquestador.verificar
+/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.verificar
 ```
+
+Va con la ruta completa. Si tienes un Python de Homebrew, `python3` a secas apunta a ese,
+que no tiene los paquetes del pipeline, y la revisión marca todo como roto aunque el
+sistema esté sano.
 
 Comprueba que todo esté en su lugar y responda. Del modelo solo gasta una pregunta
 mínima, para confirmar que tu sesión de Claude siga activa. Distingue entre lo que

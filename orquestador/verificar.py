@@ -16,7 +16,12 @@ confirmar que la sesion siga viva (ver _sesion_de_claude). Lo demas solo
 comprueba que las piezas esten y respondan. Correr despues de cada
 `brew upgrade`, `npm update` o actualizacion de macOS:
 
-    python3 -m orquestador.verificar
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m orquestador.verificar
+
+Con la ruta completa, no con `python3` a secas. Si Homebrew instalo su propio
+Python, `python3` en la Terminal apunta a ese, que no tiene los paquetes del
+pipeline, y la revision marca todo como roto aunque el sistema este sano. La
+ruta es la misma de `property python3` en boton_app/ProcesarClases.applescript.
 """
 import shutil
 import subprocess
@@ -34,6 +39,52 @@ def _anotar(estado: str, que: str, detalle: str = "") -> None:
     _resultados.append((estado, que, detalle))
     linea = f"  {estado}  {que}"
     print(f"{linea}\n         {detalle}" if detalle else linea)
+
+
+def _python_del_proyecto() -> str:
+    """
+    La ruta de `property python3` en ProcesarClases.applescript, que es el Python
+    con el que la app corre el pipeline de verdad. Se lee de ahi y no se copia
+    aca porque INSTALACION.md pide editar esa linea si tu Python esta en otro
+    lado, y una segunda copia de la ruta quedaria mintiendo.
+    """
+    import re
+
+    try:
+        texto = (RAIZ / "boton_app" / "ProcesarClases.applescript").read_text()
+    except OSError:
+        return ""
+    hallado = re.search(r'^property python3 : "(.+)"', texto, re.MULTILINE)
+    return hallado.group(1) if hallado else ""
+
+
+def _interprete_equivocado() -> bool:
+    """
+    Detecta que la revision se corrio con un Python que no es el del proyecto.
+
+    Existe porque `python3` a secas en la Terminal puede ser el de Homebrew, que
+    no tiene ningun paquete del pipeline. Con ese, la revision listaba paquetes
+    faltantes y modulos que no cargan, y el sistema parecia roto estando sano.
+
+    Solo corta si ademas falta claude_agent_sdk. Si el Python es el correcto y
+    aun asi faltan paquetes, eso si es un problema real y la revision normal lo
+    tiene que mostrar. Si no se encuentra la ruta del proyecto, tampoco corta:
+    sin saber cual es el correcto, no hay como afirmar que este es el equivocado.
+    """
+    import importlib.util
+
+    esperado = _python_del_proyecto()
+    if not esperado or importlib.util.find_spec("claude_agent_sdk"):
+        return False
+    if Path(sys.executable).resolve() == Path(esperado).resolve():
+        return False
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    print(f"\n  {FALLA}  este Python no tiene los paquetes del pipeline"
+          f"\n         estas usando {sys.executable} ({version})"
+          f"\n         el proyecto usa {esperado}"
+          f"\n\nNo se reviso nada mas, porque con este Python todo apareceria roto."
+          f"\nCorre de nuevo con:\n  {esperado} -m orquestador.verificar")
+    return True
 
 
 def _comando(nombre: str, argumentos: list[str], obligatorio: bool = True) -> None:
@@ -151,9 +202,15 @@ def _sesion_de_claude() -> None:
     """
     import asyncio
 
-    from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+    # Sin este try, un paquete faltante tiraba un traceback y cortaba la revision
+    # a la mitad, sin llegar al resumen ni a las comprobaciones que siguen.
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
-    from .skill_runner import _es_sesion_caducada
+        from .skill_runner import _es_sesion_caducada
+    except ImportError as e:
+        _anotar(FALLA, "no se pudo comprobar la sesion de Claude", f"no carga {e.name}")
+        return
 
     async def preguntar() -> tuple[bool, str]:
         opciones = ClaudeAgentOptions(
@@ -209,6 +266,8 @@ def _ventana_de_confirmacion() -> None:
 
 def main() -> int:
     print("\nRevision del sistema\n" + "=" * 58)
+    if _interprete_equivocado():
+        return 1
 
     print("\nHerramientas externas")
     _comando("ffmpeg", ["-version"])
